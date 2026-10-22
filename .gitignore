@@ -1,0 +1,14 @@
+node_modules/
+dist/
+test-artifacts/
+playwright-profile/
+.DS_Store
+*.local
+.env*
+release/
+coverage/
+playwright-report/
+test-results/
+*.log
+*.pem
+*.key

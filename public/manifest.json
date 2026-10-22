@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "SeekTab — 个人搜索新标签页",
+  "short_name": "SeekTab",
+  "version": "1.0.0",
+  "description": "使用自己的 DeepSeek API Key 搜索网页。轻盈的新标签页、本地历史与缓存，无后端。",
+  "minimum_chrome_version": "120",
+  "permissions": ["storage"],
+  "host_permissions": ["https://api.deepseek.com/*"],
+  "chrome_url_overrides": { "newtab": "index.html" },
+  "options_ui": { "page": "index.html#settings", "open_in_tab": true },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "incognito": "not_allowed",
+  "content_security_policy": {
+    "extension_pages": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src https://api.deepseek.com; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'"
+  }
+}

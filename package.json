@@ -1,0 +1,48 @@
+{
+  "name": "seektab",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Personal local BYOK new-tab web search with DeepSeek Search",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build && node scripts/check-bundle.mjs",
+    "test": "vitest run",
+    "test:e2e": "node tests/extension.mjs",
+    "preview": "vite preview --host 127.0.0.1",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "package": "npm run build && python3 scripts/package.py"
+  },
+  "dependencies": {
+    "lucide-react": "1.61.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/chrome": "0.3.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "prettier": "3.9.10",
+    "tailwindcss": "4.3.3",
+    "typescript": "7.0.2",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  },
+  "license": "MIT",
+  "author": "Wayne-Shen",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Wayne-Shen/seektab.git"
+  },
+  "homepage": "https://github.com/Wayne-Shen/seektab#readme",
+  "bugs": {
+    "url": "https://github.com/Wayne-Shen/seektab/issues"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
