@@ -14,7 +14,7 @@ EXCLUDED_DIRS = {
     ".git", "node_modules", "dist", "release", "test-artifacts", "playwright-profile",
     "coverage", "playwright-report", "test-results", "__pycache__",
 }
-EXCLUDED_NAMES = {".DS_Store"}
+EXCLUDED_NAMES = {".DS_Store", "MIGRATION.local.md"}
 
 
 def source_files():

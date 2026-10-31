@@ -158,6 +158,8 @@ docs/                     API notes, validation records, and previews
 
 ## Contributing
 
+Continuing development with an agent? Start with [agent.md](agent.md), the repository instructions in [AGENTS.md](AGENTS.md), and the development [handoff](HANDOFF.md).
+
 Bug reports, documentation improvements, and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and scope. Report security-sensitive issues according to [SECURITY.md](SECURITY.md).
 
 ## License

@@ -123,4 +123,6 @@ docs/API-VERIFICATION.md   官方接口核实记录与设计依据
 
 欢迎反馈问题和提交改进，参见 [贡献指南](CONTRIBUTING.md)；敏感问题请按 [安全说明](SECURITY.md) 处理。
 
+交给其他开发工具继续工作时，请先阅读 [agent.md](agent.md)、[AGENTS.md](AGENTS.md) 和 [开发交接文档](HANDOFF.md)。
+
 本项目原创代码采用 MIT 许可，第三方库保留各自许可，见 `LICENSE` 与 `THIRD_PARTY_NOTICES.txt`。

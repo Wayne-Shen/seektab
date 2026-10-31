@@ -6,3 +6,4 @@ release
 coverage
 playwright-report
 test-results
+MIGRATION.local.md
