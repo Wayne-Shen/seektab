@@ -138,7 +138,7 @@ Node 最低声明为 22.12，`.nvmrc` 与 CI 使用 24。依赖版本由锁文�
 
 真实 API Key 未提供，真实账户鉴权、余额、搜索质量、网络可达性尚未做用户账户实测。设置中的「测试连接」会发出一次真实、可能计费的搜索；需要用户自行填写 Key 后确认。
 
-2026-10-31 的 v1.0.1 发布实测：本地 `npm run format:check`、`npm test`（17 项）、`npm run package`、`npm run test:e2e`（22 项，真实 API 调用 0 次）全部通过；GitHub CI 运行 <https://github.com/Wayne-Shen/seektab/actions/runs/41210607125> 在 Node 24 上再次通过同样的检查，并把 `release/` 产物作为 artifact 上传。Release `v1.0.1` 的 `SeekTab-1.0.1-unpacked.zip`、`SeekTab-1.0.1-source.zip` 与 `SHA256SUMS.txt` 来自该次 CI 构建，下载后用 `shasum -a 256 -c` 校验通过；解压后的 `manifest.json` 版本为 1.0.1。发布命令由本地 `gh` 执行，因为 workflow 文件当时无法推送。
+2026-10-31 的 v1.0.1 与 v1.0.2 发布实测：本地 `npm run format:check`、`npm test`（17 项）、`npm run package`、`npm run test:e2e`（22 项，真实 API 调用 0 次）全部通过；GitHub CI 运行 <https://github.com/Wayne-Shen/seektab/actions/runs/41210607125>（v1.0.1）与 <https://github.com/Wayne-Shen/seektab/actions/runs/41214143183>（v1.0.2）在 Node 24 上再次通过同样的检查，并把 `release/` 产物作为 artifact 上传。两个 Release 的扩展 ZIP、源码 ZIP 与 `SHA256SUMS.txt` 均来自对应的 CI 构建，下载后用 `shasum -a 256 -c` 校验通过；解压后的 `manifest.json` 版本分别为 1.0.1 与 1.0.2。发布命令由本地 `gh` 执行，因为 workflow 文件当时无法推送；两次发布都新增版本号，未改写已发布资产。
 
 此前浏览器安装只准备到了最终选择目录步骤，未有完成安装的确认记录；用户也可能之后自行安装，因此当前安装状态未知。不要在这次接手中自行安装、重装或迁移浏览器数据。
 
