@@ -28,7 +28,7 @@ npm run build
 
 依赖缺失时使用 `npm ci`。要看完整界面，应将构建生成的 `dist/` 加载为 Chrome 已解压扩展，普通网页预览不支持完整功能。需要浏览器回归时执行 `npm run test:e2e`，安装浏览器及环境说明见 README。
 
-发布版本时保持 `package.json` 与 `public/manifest.json` 的版本一致，打上 `v*` 标签推送后，`.github/workflows/release.yml` 会完成校验、打包并创建 GitHub Release；发布说明写在 `docs/releases/<版本>.md`。
+发布版本时保持 `package.json` 与 `public/manifest.json` 的版本一致，发布说明写在 `docs/releases/v<版本>.md`，先推送提交再推送 `v*` 标签；`.github/workflows/release.yml` 会完成校验、打包并创建 GitHub Release。该文件目前只在本地提交里：令牌缺少 `workflow` 权限时，GitHub 会拒绝通过 git push、Contents API 和 Git Data API 写入 `.github/workflows/`，取得权限后推送即可启用。在此之前，用 CI 构建的 `release/` 产物加 `gh release create` 发布。
 
 ## 保持的产品方向
 

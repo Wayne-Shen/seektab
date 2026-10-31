@@ -58,7 +58,7 @@ Browser tests use an isolated temporary profile and mock API traffic. `CHROMIUM_
 
 Use focused tests for meaningful behavior changes. For documentation-only changes, formatting and link checks are normally sufficient. Run `npm run package` when preparing a release; generated ZIPs and checksums go to `release/`. Keep package/manifest versions synchronized when intentionally releasing a new version.
 
-Releases are published by `.github/workflows/release.yml`: push a `v<version>` tag and the workflow repeats the verification, packages the build, and creates a GitHub Release with both ZIPs and `SHA256SUMS.txt`. Put the release notes in `docs/releases/<version>.md`. Never rewrite the assets of an already published release.
+Releases: bump `package.json` and `public/manifest.json` together, write `docs/releases/v<version>.md`, push the commit, then push the `v<version>` tag. `.github/workflows/release.yml` repeats the verification, packages the build, and creates a GitHub Release with both ZIPs and `SHA256SUMS.txt`. GitHub refuses writes under `.github/workflows/` from tokens without the `workflow` scope, so obtain that scope before changing workflow files; until the workflow file is on the remote, publish the artifacts built by the CI workflow with `gh release create v<version> <assets> --verify-tag --latest --notes-file docs/releases/v<version>.md`. Never rewrite the assets of an already published release.
 
 ## Repository hygiene and delivery
 

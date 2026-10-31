@@ -1,20 +1,20 @@
 # SeekTab → DeepSeek Harness 开发交接
 
-交接日期：2026-10-29。本文描述已有实现，供下一位开发者继续工作；不是新的功能需求清单。
+交接日期：2026-10-30（功能现状沿用 2026-10-29 的记录）。本文描述已有实现，供下一位开发者继续工作；不是新的功能需求清单。
 
 ## 1. 项目身份与当前状态
 
-| 项目             | 状态                                                                                                                                     |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| 产品             | SeekTab，Chrome Manifest V3 新标签页搜索扩展                                                                                             |
-| 本地项目文件夹名 | `dsh-search`，不需要因此修改包名或公开仓库名                                                                                             |
-| 公开仓库         | https://github.com/Wayne-Shen/seektab                                                                                                    |
-| Git 远端         | `origin` → `https://github.com/Wayne-Shen/seektab.git`                                                                                   |
-| 本地分支         | 迁移前为 `main`；接手时用 Git 再次确认                                                                                                   |
-| 迁移前本地 HEAD  | `69e33645093c530ee53e2ac97b42a5aa4f4b2063`                                                                                               |
-| 既有发布         | `v1.0.0`，2026-10-22 发布了扩展 ZIP、完整源码 ZIP 与 SHA-256 文件；`v1.0.1` 为补丁版本，代码与 v1.0.0 相同，仅更新版本号、文档与发布流程 |
-| 许可证           | MIT；第三方依赖保留各自许可                                                                                                              |
-| UI / 文档        | 当前 UI 为简体中文；默认 README 为英文，`README_CN.md` 为中文                                                                            |
+| 项目             | 状态                                                                                                                                                 |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 产品             | SeekTab，Chrome Manifest V3 新标签页搜索扩展                                                                                                         |
+| 本地项目文件夹名 | `dsh-search`，不需要因此修改包名或公开仓库名                                                                                                         |
+| 公开仓库         | https://github.com/Wayne-Shen/seektab                                                                                                                |
+| Git 远端         | `origin` → `https://github.com/Wayne-Shen/seektab.git`                                                                                               |
+| 本地分支         | 迁移前为 `main`；接手时用 Git 再次确认                                                                                                               |
+| 迁移前本地 HEAD  | `69e33645093c530ee53e2ac97b42a5aa4f4b2063`                                                                                                           |
+| 既有发布         | `v1.0.0`，2026-10-22 发布了扩展 ZIP、完整源码 ZIP 与 SHA-256 文件；`v1.0.1` 于 2026-10-31 发布，扩展代码与 v1.0.0 相同，仅更新版本号、文档与发布流程 |
+| 许可证           | MIT；第三方依赖保留各自许可                                                                                                                          |
+| UI / 文档        | 当前 UI 为简体中文；默认 README 为英文，`README_CN.md` 为中文                                                                                        |
 
 2026-10-22 已完成 MVP、GitHub 公开发布和一次成功的 GitHub CI。上述远端发布及 CI 是当时已验证的记录，并不表示本轮迁移重新查询了 GitHub 的最新状态。
 
@@ -36,22 +36,22 @@
 
 ## 3. 架构与关键文件
 
-| 文件                            | 责任与接手注意事项                                                                                |
-| ------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `public/manifest.json`          | MV3、New Tab override、options 入口、图标、权限、CSP；目前只有 `storage` 与 DeepSeek API 主机权限 |
-| `src/App.tsx`                   | 首页、结果、设置、历史与快捷链接弹窗；请求取消、请求序号和返回首页时的结果保护                    |
-| `src/lib/types.ts`              | 设置、历史、缓存和结果类型；默认值及容量常量                                                      |
-| `src/lib/api.ts`                | 固定搜索地址、Unicode 查询长度、安全 URL、结果归一化、HTTP 错误、取消与超时                       |
-| `src/lib/store.ts`              | 本地状态归一化、保存设置、清除数据、缓存查找、历史去重、隐私版本                                  |
-| `src/lib/search.ts`             | 搜索协调、缓存优先、跨标签页网络锁、冷却时间、连接测试                                            |
-| `src/theme.ts`                  | 只读取非敏感主题偏好，减少启动闪烁                                                                |
-| `src/style.css`                 | Tailwind 基础和自定义响应式样式                                                                   |
-| `tests/core.test.ts`            | 17 项既有核心测试                                                                                 |
-| `tests/extension.mjs`           | 真实加载解压扩展、模拟 API 的 22 项浏览器检查                                                     |
-| `scripts/check-bundle.mjs`      | 构建产物的清单、资源、权限、CSP 等检查                                                            |
-| `scripts/package.py`            | 扩展 ZIP、源码 ZIP、校验文件；排除依赖、Git、测试与本机产物                                       |
-| `.github/workflows/ci.yml`      | Node 24 的格式、核心测试、构建打包和 Chromium 集成检查                                            |
-| `.github/workflows/release.yml` | 推送 `v*` 标签后校验、打包并创建 GitHub Release；发布说明在 `docs/releases/<版本>.md`             |
+| 文件                            | 责任与接手注意事项                                                                                                               |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `public/manifest.json`          | MV3、New Tab override、options 入口、图标、权限、CSP；目前只有 `storage` 与 DeepSeek API 主机权限                                |
+| `src/App.tsx`                   | 首页、结果、设置、历史与快捷链接弹窗；请求取消、请求序号和返回首页时的结果保护                                                   |
+| `src/lib/types.ts`              | 设置、历史、缓存和结果类型；默认值及容量常量                                                                                     |
+| `src/lib/api.ts`                | 固定搜索地址、Unicode 查询长度、安全 URL、结果归一化、HTTP 错误、取消与超时                                                      |
+| `src/lib/store.ts`              | 本地状态归一化、保存设置、清除数据、缓存查找、历史去重、隐私版本                                                                 |
+| `src/lib/search.ts`             | 搜索协调、缓存优先、跨标签页网络锁、冷却时间、连接测试                                                                           |
+| `src/theme.ts`                  | 只读取非敏感主题偏好，减少启动闪烁                                                                                               |
+| `src/style.css`                 | Tailwind 基础和自定义响应式样式                                                                                                  |
+| `tests/core.test.ts`            | 17 项既有核心测试                                                                                                                |
+| `tests/extension.mjs`           | 真实加载解压扩展、模拟 API 的 22 项浏览器检查                                                                                    |
+| `scripts/check-bundle.mjs`      | 构建产物的清单、资源、权限、CSP 等检查                                                                                           |
+| `scripts/package.py`            | 扩展 ZIP、源码 ZIP、校验文件；排除依赖、Git、测试与本机产物                                                                      |
+| `.github/workflows/ci.yml`      | Node 24 的格式、核心测试、构建打包和 Chromium 集成检查                                                                           |
+| `.github/workflows/release.yml` | **仅在本地提交 `a21bd4b`，尚未推送到远端**；推 `v*` 标签后校验、打包并创建 GitHub Release，发布说明在 `docs/releases/v<版本>.md` |
 
 不要直接编辑 `dist/`：它由构建生成。`release/` 与 `test-artifacts/` 也属于本地生成目录，均已忽略提交。
 
@@ -120,7 +120,9 @@ npm run test:e2e
 npm run package
 ```
 
-发布版本：先同步 `package.json` 与 `public/manifest.json` 的版本号，在 `docs/releases/<版本>.md` 写发布说明，提交后推送 `v<版本>` 标签；`.github/workflows/release.yml` 会重复格式、核心测试、构建打包和浏览器检查，成功后创建 GitHub Release 并上传两个 ZIP 与 `SHA256SUMS.txt`。不要改写已发布的 v1.0.0 资产。
+发布版本：先同步 `package.json` 与 `public/manifest.json` 的版本号，在 `docs/releases/v<版本>.md` 写发布说明，提交后推送 `v<版本>` 标签。`.github/workflows/release.yml` 会重复格式、核心测试、构建打包和浏览器检查，成功后创建 GitHub Release 并上传两个 ZIP 与 `SHA256SUMS.txt`。不要改写已发布的 v1.0.0 / v1.0.1 资产。
+
+该 workflow 目前只存在于本地提交 `a21bd4b`，尚未推送：当前 GitHub 令牌缺少 `workflow` 权限，而 GitHub 会同时拒绝通过 git push、Contents API 和 Git Data API 写入 `.github/workflows/` 下的文件。取得该权限后推送 `a21bd4b` 即可启用。在此之前，用 CI 产物发布：推送提交让 `ci.yml` 构建并上传 `release/` 产物，再执行 `gh release create v<版本> <产物> --verify-tag --latest --notes-file docs/releases/v<版本>.md`。
 
 Node 最低声明为 22.12，`.nvmrc` 与 CI 使用 24。依赖版本由锁文件固定；不要顺手升级。
 
@@ -136,6 +138,8 @@ Node 最低声明为 22.12，`.nvmrc` 与 CI 使用 24。依赖版本由锁文�
 
 真实 API Key 未提供，真实账户鉴权、余额、搜索质量、网络可达性尚未做用户账户实测。设置中的「测试连接」会发出一次真实、可能计费的搜索；需要用户自行填写 Key 后确认。
 
+2026-10-31 的 v1.0.1 发布实测：本地 `npm run format:check`、`npm test`（17 项）、`npm run package`、`npm run test:e2e`（22 项，真实 API 调用 0 次）全部通过；GitHub CI 运行 <https://github.com/Wayne-Shen/seektab/actions/runs/41210607125> 在 Node 24 上再次通过同样的检查，并把 `release/` 产物作为 artifact 上传。Release `v1.0.1` 的 `SeekTab-1.0.1-unpacked.zip`、`SeekTab-1.0.1-source.zip` 与 `SHA256SUMS.txt` 来自该次 CI 构建，下载后用 `shasum -a 256 -c` 校验通过；解压后的 `manifest.json` 版本为 1.0.1。发布命令由本地 `gh` 执行，因为 workflow 文件当时无法推送。
+
 此前浏览器安装只准备到了最终选择目录步骤，未有完成安装的确认记录；用户也可能之后自行安装，因此当前安装状态未知。不要在这次接手中自行安装、重装或迁移浏览器数据。
 
 ## 8. 已知限制与下一步讨论
@@ -146,6 +150,7 @@ Node 最低声明为 22.12，`.nvmrc` 与 CI 使用 24。依赖版本由锁文�
 - 更换解压扩展的加载目录可能改变扩展 ID；浏览器中原 ID 的密钥和数据不会跟随源码目录自动搬迁。
 - 当前没有 AI 汇总、自动翻页、云同步、后端或商店发布流程。
 - 本地 Key 的安全模型是个人 BYOK，不适合多人共享密钥。
+- 本地 `main` 比 `origin/main` 领先一个提交 `a21bd4b`（只含 `.github/workflows/release.yml`）；令牌拿到 `workflow` 权限前无法推送它。
 - `docs/SeekTab_DeepSeek_Search_API_高级功能集成开发指南.md` 是 Fetch 阅读模式、AI 摘要、高级筛选等方向的研究与设计草案，**未获批准**，其中的接口字段、定价与限速需要在动手前重新核对官方文档。
 
 建议先让用户明确下一项需求。可讨论但尚未授权的方向包括：英文 UI、本地配置备份 / 迁移、组件拆分、可访问性改进、Chrome Web Store 发布准备。不要仅因它们出现在交接文件中就实施。
