@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
-  ArrowDown,
   ArrowLeft,
   ArrowRight,
   ArrowUpRight,
@@ -15,13 +14,11 @@ import {
   Link2,
   LoaderCircle,
   LockKeyhole,
-  Moon,
   Plus,
   Search,
   Settings2,
   ShieldCheck,
   SlidersHorizontal,
-  Sun,
   Trash2,
   X,
 } from 'lucide-react';
@@ -32,11 +29,11 @@ import {
   readState,
   removeApiKey,
   savePreferences,
-  setTheme,
   updateState,
 } from './lib/store';
 import { runSearch, testConnection, type SearchResponse } from './lib/search';
 import type { LocalState, QuickLink, Settings } from './lib/types';
+import { version } from '../public/manifest.json';
 
 function Mark({ small = false }: { small?: boolean }) {
   return (
@@ -62,6 +59,7 @@ function Modal({
   onClose: () => void;
   wide?: boolean;
 }) {
+  const titleId = useId();
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const dialog = ref.current!;
@@ -79,12 +77,12 @@ function Modal({
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      aria-labelledby="dialog-title"
+      aria-labelledby={titleId}
     >
       <div className="modal-inner">
         <header className="modal-header">
           <div>
-            <h2 id="dialog-title">{title}</h2>
+            <h2 id={titleId}>{title}</h2>
             {subtitle && <p>{subtitle}</p>}
           </div>
           <button className="icon-button" onClick={onClose} aria-label="关闭弹窗">
@@ -129,6 +127,7 @@ function SettingsModal({
   onSaved: (message: string) => void;
   cooldown: number;
 }) {
+  const [linkEditor, setLinkEditor] = useState<{ link?: QuickLink } | null>(null);
   const [draft, setDraft] = useState<Settings>({ ...state.settings });
   const [key, setKey] = useState(state.apiKey);
   const [visible, setVisible] = useState(false);
@@ -187,181 +186,219 @@ function SettingsModal({
     }
   }
   return (
-    <Modal
-      title="让 SeekTab 更适合你"
-      subtitle="你的密钥、偏好与搜索记录，仅保存在本机。"
-      onClose={onClose}
-      wide
-    >
-      <form onSubmit={save}>
-        <section className="settings-section">
-          <div className="section-label">
-            <LockKeyhole size={17} />
-            <h3>连接 DeepSeek</h3>
-            <span className="tag">BYOK</span>
-          </div>
-          <label className="field-label" htmlFor="api-key">
-            DeepSeek API Key
-          </label>
-          <div className="key-input">
-            <input
-              autoComplete="off"
-              spellCheck={false}
-              id="api-key"
-              name="api-key"
-              type={visible ? 'text' : 'password'}
-              placeholder="粘贴你的 API Key"
-              value={key}
-              maxLength={512}
-              onChange={(e) => {
-                setKey(e.target.value);
-                setFeedback(null);
-              }}
-            />
-            <button
-              type="button"
-              className="icon-button"
-              aria-label={visible ? '隐藏密钥' : '显示密钥'}
-              onClick={() => setVisible((v) => !v)}
-            >
-              {visible ? <EyeOff size={18} /> : <Eye size={18} />}
-            </button>
-          </div>
-          <p className="field-help">
-            密钥存于 Chrome 本地存储，不会同步。具有本机访问权限的人可能读取它。
-            <a
-              href="https://platform.deepseek.com/api_keys"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              获取密钥 <ExternalLink size={12} />
-            </a>
-          </p>
-          <div className="connection-actions">
-            <button
-              className="button secondary"
-              type="button"
-              onClick={test}
-              disabled={testing || saving || !key.trim() || cooldown > 0}
-            >
-              {testing ? <LoaderCircle size={15} className="spin" /> : <Globe2 size={15} />}{' '}
-              {testing ? '正在测试…' : cooldown > 0 ? `请等待 ${cooldown} 秒` : '测试连接'}
-            </button>
-            {state.apiKey && (
-              <button
-                className="text-button danger"
-                type="button"
-                disabled={testing || saving}
-                onClick={async () => {
-                  try {
-                    await removeApiKey();
-                    setKey('');
-                    setFeedback({ text: '已移除本机保存的密钥', ok: true });
-                  } catch {
-                    setFeedback({ text: '移除失败，请重试。', ok: false });
-                  }
+    <>
+      <Modal title="设置" onClose={onClose} wide>
+        <form onSubmit={save}>
+          <section className="settings-section">
+            <div className="section-label">
+              <LockKeyhole size={17} />
+              <h3>连接 DeepSeek</h3>
+            </div>
+            <label className="field-label" htmlFor="api-key">
+              DeepSeek API Key
+            </label>
+            <div className="key-input">
+              <input
+                autoComplete="off"
+                spellCheck={false}
+                id="api-key"
+                name="api-key"
+                type={visible ? 'text' : 'password'}
+                placeholder="粘贴你的 API Key"
+                value={key}
+                maxLength={512}
+                onChange={(e) => {
+                  setKey(e.target.value);
+                  setFeedback(null);
                 }}
+              />
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={visible ? '隐藏密钥' : '显示密钥'}
+                onClick={() => setVisible((v) => !v)}
               >
-                移除已存密钥
+                {visible ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+            <p className="field-help">
+              密钥存于 Chrome 本地存储，不会同步。具有本机访问权限的人可能读取它。
+              <a
+                href="https://platform.deepseek.com/api_keys"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                获取密钥 <ExternalLink size={12} />
+              </a>
+            </p>
+            <div className="connection-actions">
+              <button
+                className="button secondary"
+                type="button"
+                onClick={test}
+                disabled={testing || saving || !key.trim() || cooldown > 0}
+              >
+                {testing ? <LoaderCircle size={15} className="spin" /> : <Globe2 size={15} />}{' '}
+                {testing ? '正在测试…' : cooldown > 0 ? `请等待 ${cooldown} 秒` : '测试连接'}
+              </button>
+              {state.apiKey && (
+                <button
+                  className="text-button danger"
+                  type="button"
+                  disabled={testing || saving}
+                  onClick={async () => {
+                    try {
+                      await removeApiKey();
+                      setKey('');
+                      setFeedback({ text: '已移除本机保存的密钥', ok: true });
+                    } catch {
+                      setFeedback({ text: '移除失败，请重试。', ok: false });
+                    }
+                  }}
+                >
+                  移除已存密钥
+                </button>
+              )}
+            </div>
+            <p className="tiny muted">
+              测试会向 DeepSeek 发送一次「DeepSeek」搜索，可能产生 API 费用；不会写入历史或缓存。
+            </p>
+            {feedback && (
+              <p className={`feedback ${feedback.ok ? 'success' : 'error'}`} role="status">
+                {feedback.ok ? <CheckCircle2 size={16} /> : <Globe2 size={16} />} {feedback.text}
+              </p>
+            )}
+          </section>
+          <section className="settings-section">
+            <div className="section-label">
+              <SlidersHorizontal size={17} />
+              <h3>外观与搜索</h3>
+            </div>
+            <div className="settings-grid">
+              <label className="field-label">
+                主题
+                <select
+                  value={draft.theme}
+                  onChange={(e) => patch({ theme: e.target.value as Settings['theme'] })}
+                >
+                  <option value="system">跟随系统</option>
+                  <option value="light">浅色</option>
+                  <option value="dark">深色</option>
+                </select>
+              </label>
+              <label className="field-label">
+                每次返回
+                <select
+                  value={draft.count}
+                  onChange={(e) => patch({ count: Number(e.target.value) })}
+                >
+                  <option value={5}>5 条结果</option>
+                  <option value={10}>10 条结果</option>
+                  <option value={20}>20 条结果</option>
+                </select>
+              </label>
+            </div>
+            <Toggle
+              label="在新标签页打开链接"
+              description="保留当前搜索结果，继续探索。"
+              checked={draft.openNewTab}
+              onChange={(openNewTab) => patch({ openNewTab })}
+            />
+          </section>
+          <section className="settings-section">
+            <div className="section-label">
+              <ShieldCheck size={17} />
+              <h3>本地数据</h3>
+            </div>
+            <Toggle
+              label="记住搜索历史"
+              description="保存最近 50 条成功搜索，关闭会清除历史。"
+              checked={draft.historyEnabled}
+              onChange={(historyEnabled) => patch({ historyEnabled })}
+            />
+            <Toggle
+              label="缓存搜索结果"
+              description="15 分钟内复用相同搜索，最多保存 20 组。关闭会清除缓存。"
+              checked={draft.cacheEnabled}
+              onChange={(cacheEnabled) => patch({ cacheEnabled })}
+            />
+            <div className="data-actions">
+              <button className="text-button" type="button" onClick={() => clear('history')}>
+                <Trash2 size={14} />
+                清除历史（{state.history.length}）
+              </button>
+              <button className="text-button" type="button" onClick={() => clear('cache')}>
+                <Trash2 size={14} />
+                清除缓存（{state.cache.length}）
+              </button>
+            </div>
+            {dataFeedback && (
+              <p className="tiny" role="status">
+                {dataFeedback}
+              </p>
+            )}
+            <p className="privacy-note">
+              搜索词仅在你提交时直发 DeepSeek。无后端、无统计追踪、不读取 Chrome 浏览历史。
+              <a
+                href="https://api-docs.deepseek.com/zh-cn/guides/search/"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                接口说明 <ArrowUpRight size={12} />
+              </a>
+            </p>
+          </section>
+          <section className="settings-section" aria-labelledby="shortcuts-title">
+            <div className="section-label">
+              <Link2 size={17} />
+              <h3 id="shortcuts-title">快捷链接</h3>
+            </div>
+            <div className="saved-links">
+              {state.links.map((link) => (
+                <div className="saved-link" key={link.id}>
+                  <a
+                    href={safeUrl(link.url) || undefined}
+                    target={state.settings.openNewTab ? '_blank' : '_self'}
+                    rel="noopener noreferrer"
+                  >
+                    {link.title}
+                    <ArrowUpRight size={16} />
+                  </a>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label={`编辑 ${link.title}`}
+                    onClick={() => setLinkEditor({ link })}
+                  >
+                    <SlidersHorizontal size={18} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            {state.links.length < 8 && (
+              <button type="button" className="text-button" onClick={() => setLinkEditor({})}>
+                <Plus size={18} />
+                添加快捷链接
               </button>
             )}
-          </div>
-          <p className="tiny muted">
-            测试会向 DeepSeek 发送一次「DeepSeek」搜索，可能产生 API 费用；不会写入历史或缓存。
-          </p>
-          {feedback && (
-            <p className={`feedback ${feedback.ok ? 'success' : 'error'}`} role="status">
-              {feedback.ok ? <CheckCircle2 size={16} /> : <Globe2 size={16} />} {feedback.text}
-            </p>
-          )}
-        </section>
-        <section className="settings-section">
-          <div className="section-label">
-            <SlidersHorizontal size={17} />
-            <h3>外观与搜索</h3>
-          </div>
-          <div className="settings-grid">
-            <label className="field-label">
-              主题
-              <select
-                value={draft.theme}
-                onChange={(e) => patch({ theme: e.target.value as Settings['theme'] })}
-              >
-                <option value="system">跟随系统</option>
-                <option value="light">浅色</option>
-                <option value="dark">深色</option>
-              </select>
-            </label>
-            <label className="field-label">
-              每次返回
-              <select
-                value={draft.count}
-                onChange={(e) => patch({ count: Number(e.target.value) })}
-              >
-                <option value={5}>5 条结果</option>
-                <option value={10}>10 条结果</option>
-                <option value={20}>20 条结果</option>
-              </select>
-            </label>
-          </div>
-          <Toggle
-            label="在新标签页打开链接"
-            description="保留当前搜索结果，继续探索。"
-            checked={draft.openNewTab}
-            onChange={(openNewTab) => patch({ openNewTab })}
-          />
-        </section>
-        <section className="settings-section">
-          <div className="section-label">
-            <ShieldCheck size={17} />
-            <h3>本地数据</h3>
-          </div>
-          <Toggle
-            label="记住搜索历史"
-            description="保存最近 50 条成功搜索，关闭会清除历史。"
-            checked={draft.historyEnabled}
-            onChange={(historyEnabled) => patch({ historyEnabled })}
-          />
-          <Toggle
-            label="缓存搜索结果"
-            description="15 分钟内复用相同搜索，最多保存 20 组。关闭会清除缓存。"
-            checked={draft.cacheEnabled}
-            onChange={(cacheEnabled) => patch({ cacheEnabled })}
-          />
-          <div className="data-actions">
-            <button className="text-button" type="button" onClick={() => clear('history')}>
-              <Trash2 size={14} />
-              清除历史（{state.history.length}）
+          </section>
+          <footer className="modal-footer">
+            <span className="tiny muted">SeekTab {version}</span>
+            <button className="button primary" type="submit" disabled={saving || testing}>
+              {saving ? <LoaderCircle size={16} className="spin" /> : <Check size={16} />}保存设置
             </button>
-            <button className="text-button" type="button" onClick={() => clear('cache')}>
-              <Trash2 size={14} />
-              清除缓存（{state.cache.length}）
-            </button>
-          </div>
-          {dataFeedback && (
-            <p className="tiny" role="status">
-              {dataFeedback}
-            </p>
-          )}
-          <p className="privacy-note">
-            搜索词仅在你提交时直发 DeepSeek。无后端、无统计追踪、不读取 Chrome 浏览历史。
-            <a
-              href="https://api-docs.deepseek.com/zh-cn/guides/search/"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              接口说明 <ArrowUpRight size={12} />
-            </a>
-          </p>
-        </section>
-        <footer className="modal-footer">
-          <span className="tiny muted">SeekTab 1.0 · 个人版</span>
-          <button className="button primary" type="submit" disabled={saving || testing}>
-            {saving ? <LoaderCircle size={16} className="spin" /> : <Check size={16} />}保存设置
-          </button>
-        </footer>
-      </form>
-    </Modal>
+          </footer>
+        </form>
+      </Modal>
+      {linkEditor && (
+        <LinkModal
+          link={linkEditor.link}
+          count={state.links.length}
+          onClose={() => setLinkEditor(null)}
+          onSaved={() => onSaved('快捷链接已保存')}
+        />
+      )}
+    </>
   );
 }
 function LinkModal({
@@ -415,11 +452,7 @@ function LinkModal({
     }
   }
   return (
-    <Modal
-      title={link ? '编辑快捷链接' : '添加快捷链接'}
-      subtitle="留一个位置，给经常到访的网站。"
-      onClose={onClose}
-    >
+    <Modal title={link ? '编辑快捷链接' : '添加快捷链接'} onClose={onClose}>
       <form onSubmit={submit} className="link-form">
         <label className="field-label">
           名称
@@ -492,7 +525,7 @@ function HistoryModal({
   onClear: () => void;
 }) {
   return (
-    <Modal title="最近的好奇心" subtitle="仅保存在此浏览器中，点击继续搜索。" onClose={onClose}>
+    <Modal title="搜索历史" onClose={onClose}>
       <div className="history-list">
         {state.history.length ? (
           state.history.map((h) => (
@@ -514,11 +547,7 @@ function HistoryModal({
         ) : (
           <div className="empty-small">
             <History size={28} />
-            <p>
-              {state.settings.historyEnabled
-                ? '新的发现，会从下一次搜索开始。'
-                : '历史记录已关闭。'}
-            </p>
+            <p>{state.settings.historyEnabled ? '暂无搜索历史' : '历史记录已关闭。'}</p>
           </div>
         )}
       </div>
@@ -541,10 +570,9 @@ export default function App() {
   const [response, setResponse] = useState<SearchResponse | null>(null);
   const [error, setError] = useState<SearchError | null>(null);
   const [busy, setBusy] = useState(false);
-  const [modal, setModal] = useState<'settings' | 'history' | 'link' | null>(
+  const [modal, setModal] = useState<'settings' | 'history' | null>(
     location.hash === '#settings' ? 'settings' : null,
   );
-  const [editingLink, setEditingLink] = useState<QuickLink | undefined>();
   const [toast, setToast] = useState('');
   const [now, setNow] = useState(Date.now());
   const [systemDark, setSystemDark] = useState(matchMedia('(prefers-color-scheme: dark)').matches);
@@ -614,7 +642,7 @@ export default function App() {
   }, [toast]);
   useEffect(() => () => abortRef.current?.abort(), []);
   useEffect(() => {
-    document.title = searchedQuery ? `${searchedQuery} · SeekTab` : 'SeekTab · 新的发现';
+    document.title = searchedQuery ? `${searchedQuery} · SeekTab` : 'SeekTab · 搜索';
   }, [searchedQuery]);
   const cooldown = Math.max(0, Math.ceil(((state?.cooldownUntil || 0) - now) / 1000));
   async function search(value: string, refresh = false) {
@@ -699,18 +727,9 @@ export default function App() {
     <div className={`app ${searching ? 'has-results' : ''}`}>
       <header className="topbar">
         <button className="brand" onClick={home} aria-label="SeekTab 首页">
-          <span className="brand-symbol">
-            <Mark small />
-          </span>
-          <span>
-            SeekTab<span className="brand-dot">.</span>
-          </span>
+          SeekTab
         </button>
         <nav className="top-actions" aria-label="页面工具">
-          <span className="local-badge">
-            <span />
-            个人搜索空间
-          </span>
           <button
             className="icon-button"
             aria-label="搜索历史"
@@ -718,20 +737,6 @@ export default function App() {
             onClick={() => setModal('history')}
           >
             <History size={19} />
-          </button>
-          <button
-            className="icon-button"
-            aria-label={dark ? '切换浅色主题' : '切换深色主题'}
-            title={dark ? '切换浅色主题' : '切换深色主题'}
-            onClick={async () => {
-              try {
-                await setTheme(dark ? 'light' : 'dark');
-              } catch {
-                setToast('主题保存失败，请重试');
-              }
-            }}
-          >
-            {dark ? <Sun size={19} /> : <Moon size={19} />}
           </button>
           <button
             className="icon-button"
@@ -744,28 +749,10 @@ export default function App() {
         </nav>
       </header>
       <main className={searching ? 'main results-main' : 'main home-main'}>
-        {!searching && (
-          <section className="hero">
-            <div className="date-line">
-              <span className="date-dash" />
-              {new Date(now).toLocaleDateString('zh-CN', {
-                month: 'long',
-                day: 'numeric',
-                weekday: 'long',
-              })}
-              <span className="date-dash" />
-            </div>
-            <p className="eyebrow">A LITTLE CURIOSITY, A NEW POSSIBILITY</p>
-            <h1>
-              好奇心，<span>从这里开始。</span>
-            </h1>
-            <p className="hero-subtitle">把问题交给搜索，把时间留给发现。</p>
-          </section>
-        )}
         {searching && (
           <button className="back-button" onClick={home}>
             <ArrowLeft size={15} />
-            返回新标签页
+            返回
           </button>
         )}
         <section className="search-area" aria-label="网页搜索">
@@ -784,9 +771,8 @@ export default function App() {
                 onChange={(e) => setQuery(e.target.value)}
                 autoComplete="off"
                 spellCheck={false}
-                placeholder="搜索网页，发现更多可能…"
+                placeholder="搜索网页"
                 aria-label="搜索网页"
-                aria-describedby="search-hint"
                 maxLength={256}
               />
               {query && !busy && (
@@ -806,10 +792,10 @@ export default function App() {
                 <button
                   type="button"
                   className="search-submit stop"
+                  aria-label="停止"
                   onClick={() => abortRef.current?.abort()}
                 >
                   <X size={17} />
-                  <span>停止</span>
                 </button>
               ) : (
                 <button
@@ -818,40 +804,15 @@ export default function App() {
                   disabled={!query.trim()}
                   aria-label="提交搜索"
                 >
-                  <span>搜索</span>
                   <ArrowRight size={19} />
                 </button>
               )}
             </div>
-            <div className="search-bottom">
-              <span className="provider-label">
-                <span className="provider-dot" />
-                DeepSeek Search
-              </span>
-              <span className="search-hint" id="search-hint">
-                {[...query].length > 100 ? (
-                  `${[...query.trim()].length} / 128 字符`
-                ) : (
-                  <>
-                    <kbd>Enter</kbd> 开始探索
-                  </>
-                )}
-              </span>
-            </div>
           </form>
           {!state.apiKey && (
-            <div className="setup-prompt">
-              <span className="setup-icon">
-                <LockKeyhole size={18} />
-              </span>
-              <div>
-                <strong>连接你的搜索引擎</strong>
-                <p>添加 DeepSeek API Key，开启属于你的搜索空间。</p>
-              </div>
-              <button onClick={() => setModal('settings')}>
-                去设置 <ArrowUpRight size={16} />
-              </button>
-            </div>
+            <button className="setup-prompt" onClick={() => setModal('settings')}>
+              添加 API Key
+            </button>
           )}
           {!searching && error && (
             <p className="feedback error" role="alert">
@@ -859,77 +820,7 @@ export default function App() {
             </p>
           )}
         </section>
-        {!searching ? (
-          <>
-            <section className="quick-section" aria-labelledby="quick-title">
-              <div className="section-heading">
-                <h2 id="quick-title">常去的地方</h2>
-                <span>YOUR EVERYDAY SHORTCUTS</span>
-              </div>
-              <div className="quick-links">
-                {state.links.map((l, index) => (
-                  <div className="quick-item" key={l.id}>
-                    <a href={safeUrl(l.url)!} {...linkProps} className="quick-link">
-                      <span className={`shortcut-icon shade-${index % 4}`}>
-                        {l.title.slice(0, 1).toUpperCase()}
-                      </span>
-                      <span>{l.title}</span>
-                    </a>
-                    <button
-                      className="edit-link"
-                      aria-label={`编辑 ${l.title}`}
-                      onClick={() => {
-                        setEditingLink(l);
-                        setModal('link');
-                      }}
-                    >
-                      <SlidersHorizontal size={12} />
-                    </button>
-                  </div>
-                ))}
-                {state.links.length < 8 && (
-                  <button
-                    className="quick-link add-link"
-                    onClick={() => {
-                      setEditingLink(undefined);
-                      setModal('link');
-                    }}
-                  >
-                    <span className="shortcut-icon">
-                      <Plus size={22} />
-                    </span>
-                    <span>添加快捷链接</span>
-                  </button>
-                )}
-              </div>
-            </section>
-            {state.history.length > 0 && (
-              <section className="recent-section" aria-label="最近搜索">
-                <div className="section-heading">
-                  <h2>
-                    <Clock3 size={14} />
-                    最近搜索
-                  </h2>
-                  <button className="text-button" onClick={() => setModal('history')}>
-                    查看全部 <ArrowRight size={13} />
-                  </button>
-                </div>
-                <div className="recent-chips">
-                  {state.history.slice(0, 4).map((h) => (
-                    <button key={h.query} onClick={() => void search(h.query)}>
-                      <span>{h.query}</span>
-                      <ArrowUpRight size={13} />
-                    </button>
-                  ))}
-                </div>
-              </section>
-            )}
-            <div className="home-note">
-              <span className="small-orbit" />
-              <span>每一次提问，都在靠近更大的世界。</span>
-            </div>
-          </>
-        ) : (
+        {searching && (
           <div className="results-layout">
             <section className="results-column" aria-label="搜索结果" aria-busy={busy}>
               <div className="results-heading">
@@ -939,7 +830,7 @@ export default function App() {
                 </h1>
                 <span aria-live="polite">
                   {busy
-                    ? '正在寻找…'
+                    ? '搜索中…'
                     : response
                       ? `${response.results.length} 条结果${response.fromCache ? ' · 本地缓存' : ''}`
                       : 'DeepSeek Search'}
@@ -983,10 +874,10 @@ export default function App() {
                   </span>
                   <h2>
                     {error.code === 'rate'
-                      ? '稍等一下，发现正在路上'
+                      ? '请稍后重试'
                       : error.code === 'cancelled'
-                        ? '这次搜索已暂停'
-                        : '暂时没有连上搜索'}
+                        ? '搜索已取消'
+                        : '搜索失败'}
                   </h2>
                   <p>{error.message}</p>
                   <div>
@@ -1009,7 +900,7 @@ export default function App() {
                         disabled={cooldown > 0}
                         onClick={() => void search(searchedQuery, true)}
                       >
-                        {cooldown > 0 ? `${cooldown} 秒后重试` : '重新搜索'}
+                        {cooldown > 0 ? `${cooldown} 秒后重试` : '重试'}
                       </button>
                     )}
                   </div>
@@ -1027,12 +918,12 @@ export default function App() {
                       <span className="message-icon">
                         <Search size={26} />
                       </span>
-                      <h2>换个角度，继续探索</h2>
+                      <h2>无结果</h2>
                       <p>没有找到匹配的网页。试试更简短的关键词，或减少搜索条件。</p>
                     </div>
                   ) : (
                     <ol className="results-list">
-                      {response.results.map((r, index) => (
+                      {response.results.map((r) => (
                         <li key={r.url} className="result-card">
                           <div className="result-top">
                             <span className="result-site-icon">
@@ -1044,9 +935,6 @@ export default function App() {
                               </span>
                               <span className="site-domain">{new URL(r.url).hostname}</span>
                             </div>
-                            <span className="result-index">
-                              {String(index + 1).padStart(2, '0')}
-                            </span>
                           </div>
                           <h2>
                             <a href={safeUrl(r.url) || undefined} {...linkProps}>
@@ -1066,79 +954,17 @@ export default function App() {
                                 })}
                               </time>
                             )}
-                            <a
-                              href={safeUrl(r.url) || undefined}
-                              {...linkProps}
-                              className="result-url"
-                              title={r.url}
-                            >
-                              <Link2 size={12} />
-                              {r.url.replace(/^https?:\/\//, '').slice(0, 90)}
-                            </a>
                           </div>
                         </li>
                       ))}
                     </ol>
                   )}
-                  <div className="result-end">
-                    <CheckCircle2 size={14} />
-                    {response.fromCache
-                      ? `来自本机缓存 · ${new Date(response.at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 保存`
-                      : '已展示本次搜索返回的全部结果'}
-                  </div>
                 </>
               )}
             </section>
-            <aside className="search-aside">
-              <span className="aside-icon">
-                <Mark small />
-              </span>
-              <h2>让搜索更精准</h2>
-              <p>
-                一个小小的条件，
-                <br />
-                也能让答案更近一点。
-              </p>
-              <div className="search-tips">
-                <div>
-                  <code>site:github.com</code>
-                  <span>只搜索指定网站</span>
-                </div>
-                <div>
-                  <code>"精确短语"</code>
-                  <span>寻找完整匹配</span>
-                </div>
-                <div>
-                  <code>lang:zh</code>
-                  <span>优先发现中文内容</span>
-                </div>
-                <div>
-                  <code>after:2026-01-01</code>
-                  <span>限定网页发布时间</span>
-                </div>
-              </div>
-              <div className="aside-privacy">
-                <ShieldCheck size={18} />
-                <span>
-                  本地保存，直接连接。
-                  <br />
-                  你的探索，由你掌握。
-                </span>
-              </div>
-            </aside>
           </div>
         )}
       </main>
-      <footer className="page-footer">
-        <span>
-          <ShieldCheck size={13} />
-          本地优先 · 由 DeepSeek Search 提供支持
-        </span>
-        <span className="footer-shortcut">
-          <kbd>/</kbd> 聚焦搜索 <span className="footer-divider" />
-          保持好奇 <ArrowDown size={12} />
-        </span>
-      </footer>
       {toast && (
         <div className="toast" role="status">
           <CheckCircle2 size={16} />
@@ -1154,14 +980,6 @@ export default function App() {
           onClose={closeModal}
           onSearch={(q) => void search(q)}
           onClear={() => void clearHistory()}
-        />
-      )}
-      {modal === 'link' && (
-        <LinkModal
-          link={editingLink}
-          count={state.links.length}
-          onClose={closeModal}
-          onSaved={() => setToast(editingLink ? '快捷链接已更新' : '快捷链接已添加')}
         />
       )}
     </div>

@@ -56,9 +56,16 @@ def main():
 4. Open a new tab, keep SeekTab if asked, and enter your own DeepSeek API key in Settings.
 5. Test connection (测试连接), then Save settings (保存设置).
 
+Updating: back up the existing extension folder, replace its contents at the SAME path,
+then click Reload on the existing entry in chrome://extensions. Compare its ID before
+and after. Do not uninstall or load a different folder; keep existing local settings.
+
 Chrome 120+ is required. The interface currently uses Simplified Chinese.
 No key is included. Connection testing sends one real search and may incur charges.
 Keys are saved locally without encryption. No application backend or telemetry is used.
+
+更新：备份后替换原安装目录中的文件，在已有扩展条目点击「重新加载」并核对 ID。
+不要卸载或更换目录，以保留本地设置。
 
 中文：解压后在 chrome://extensions 开启开发者模式，点击「加载已解压的扩展程序」，
 选择包含 manifest.json 的文件夹。打开新标签页，在设置中填写自己的密钥、测试并保存。

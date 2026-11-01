@@ -1,3 +1,13 @@
+# SeekTab 1.1.0 validation — 2026-11-01
+
+Fresh local validation: formatting, 17 core tests, TypeScript, production bundle checks, packaging, and 23 browser checks passed. Browser checks used Chrome for Testing 147.0.7727.15 with mocked provider traffic; real API calls: 0. Home and settings were checked at 320px, results at 390px, and desktop layouts at 1440px, with light and dark themes.
+
+New checks cover a search-only home, retained complete storage after reload, access to saved shortcuts/history, and preservation of unsaved Settings drafts while editing shortcuts. Existing cancellation, cross-tab requests, cache TTL, privacy revision, safe errors, and key handling checks remain enabled. The current named results are in browser-test-report.json.
+
+The historical report below describes v1.0.0 only. Live provider availability and older supported Chrome versions have not been revalidated.
+
+---
+
 # SeekTab 1.0.0 validation report
 
 Recorded on **2026-10-22**.

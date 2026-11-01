@@ -7,7 +7,7 @@
 [![CI](https://github.com/Wayne-Shen/seektab/actions/workflows/ci.yml/badge.svg)](https://github.com/Wayne-Shen/seektab/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-SeekTab replaces Chrome's New Tab page with a calm search workspace: structured web results, quick links, local history, and a short-lived result cache. Requests go directly from the extension to DeepSeek. There is no application backend or account system.
+SeekTab replaces Chrome's New Tab page with a search-first Material 3 Expressive interface: one search field, structured web results, and history/settings on demand. Requests go directly from the extension to DeepSeek. There is no application backend or account system.
 
 [Download the extension](https://github.com/Wayne-Shen/seektab/releases/latest) · [Report an issue](https://github.com/Wayne-Shen/seektab/issues) · [Contribute](CONTRIBUTING.md)
 
@@ -27,7 +27,7 @@ SeekTab replaces Chrome's New Tab page with a calm search workspace: structured 
 - **Manifest V3 New Tab replacement** with light, dark, and system themes.
 - **Web results first:** titles, snippets, source names/domains, and publication dates when available. No generated AI answers.
 - **Bring your own key:** masked key input, connection test, local saving, and key removal.
-- **Quick links:** add, edit, and remove up to eight shortcuts.
+- **Quick links in Settings:** open, add, edit, and remove up to eight saved shortcuts.
 - **Local history:** up to 50 unique successful searches, with opt-out and clearing controls.
 - **Result cache:** up to 20 query/count combinations, with a fixed 15-minute lifetime and manual refresh.
 - **Coordinated tabs:** same-origin locks serialize requests and local data updates; repeated concurrent searches can share a completed result.
@@ -38,7 +38,7 @@ SeekTab replaces Chrome's New Tab page with a calm search workspace: structured 
 
 Requires **Chrome 120 or later** and a DeepSeek API key with access to the Search API. The documented local browser checks used Chrome for Testing 147; older supported versions have not all been tested individually.
 
-1. Open [Releases](https://github.com/Wayne-Shen/seektab/releases/latest) and download `SeekTab-1.0.0-unpacked.zip`.
+1. Open [Releases](https://github.com/Wayne-Shen/seektab/releases/latest) and download `SeekTab-1.1.0-unpacked.zip`.
 2. Extract the ZIP and keep the `SeekTab-unpacked` folder in a permanent location.
 3. Open `chrome://extensions` in Chrome and enable **Developer mode**.
 4. Choose **Load unpacked** and select the folder containing `manifest.json`.
@@ -48,6 +48,12 @@ Requires **Chrome 120 or later** and a DeepSeek API key with access to the Searc
 You do not need Node.js to install the prebuilt extension. No API key is included. This is an unpacked extension, not a Chrome Web Store listing.
 
 **Connection testing sends one real Search API request for `DeepSeek` and may incur provider charges.** It does not save the key or write search history/cache. Saving settings persists the key locally.
+
+## Update an existing installation
+
+Back up the current extension folder, then replace its contents with the verified release ZIP's `SeekTab-unpacked` contents **at the same existing path**. In `chrome://extensions`, click **Reload** on the existing SeekTab entry and compare its ID before and after. Keep the existing installation entry to retain local settings, saved keys, history, cache, and shortcuts; do not uninstall or load a second folder to update. A new manifest key or a different unpacked path can change the ID.
+
+Release ZIPs are built and tested by GitHub Actions and include SHA-256 checksums. The search-only home keeps history behind its icon; theme and saved shortcuts are under Settings.
 
 ## How search works
 
@@ -117,7 +123,7 @@ Browser tests load the real unpacked extension into an isolated temporary Chromi
 
 Set `CHROMIUM_PATH` to a compatible existing Chromium / Chrome for Testing executable if needed. Use Playwright's Chromium for automated side-loading, as normal Chrome builds may restrict command-line extension loading.
 
-The recorded validation includes **17 core tests and 22 browser checks**. It covers New Tab replacement, key handling, result fields, cache expiry rules, cross-tab coordination, shortcuts, responsive layouts, error states, cancellation, and clearing data during an in-flight request. See the [validation report](docs/TEST-REPORT.md).
+The recorded validation includes **17 core tests and 23 browser checks**. It covers New Tab replacement, key handling, result fields, cache expiry rules, cross-tab coordination, shortcuts, responsive layouts, error states, cancellation, and clearing data during an in-flight request. See the [validation report](docs/TEST-REPORT.md).
 
 **Real-account authentication and live search quality have not been verified with a user key.** Use Test connection after installation to validate your own account and network.
 

@@ -123,12 +123,21 @@ try {
     if (/^https?:/.test(req.url()) && !req.url().startsWith('https://api.deepseek.com/'))
       foreignRequests.push(req.url());
   });
+  context.setDefaultTimeout(15000);
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(`chrome-extension://${extensionId}/index.html`);
-  await expect(page.getByRole('heading', { name: '好奇心，从这里开始。' })).toBeVisible();
-  await expect(page.getByText('连接你的搜索引擎', { exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: '搜索网页', exact: true })).toHaveValue('');
+  await expect(
+    page.locator('.hero, .quick-section, .recent-section, .page-footer, .search-aside'),
+  ).toHaveCount(0);
+  await page.setViewportSize({ width: 320, height: 700 });
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expect(page.getByText('添加 API Key', { exact: true })).toBeVisible();
   await page.screenshot({ path: path.join(artifacts, 'home-light.png') });
   record('Unpacked MV3 loads with local assets and first-run onboarding');
 
@@ -139,12 +148,16 @@ try {
   await newtab.close();
   record('chrome://newtab is overridden by SeekTab');
 
-  await page.getByRole('button', { name: '切换深色主题' }).click();
+  await page.getByRole('button', { name: '打开设置' }).click();
+  await page.getByRole('combobox', { name: /主题/ }).selectOption('dark');
+  await page.getByRole('button', { name: '保存设置', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.screenshot({ path: path.join(artifacts, 'home-dark.png') });
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await page.getByRole('button', { name: '切换浅色主题' }).click();
+  await page.getByRole('button', { name: '打开设置' }).click();
+  await page.getByRole('combobox', { name: /主题/ }).selectOption('light');
+  await page.getByRole('button', { name: '保存设置', exact: true }).click();
   record('Light/dark preference persists after reload');
 
   await page.getByRole('button', { name: '打开设置' }).click();
@@ -159,7 +172,7 @@ try {
   await page.getByRole('button', { name: '保存设置' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.reload();
-  await expect(page.getByText('连接你的搜索引擎', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('添加 API Key', { exact: true })).toHaveCount(0);
   record('Search endpoint connection test is isolated from key persistence/history/cache');
 
   await page.getByRole('button', { name: '打开设置' }).click();
@@ -233,7 +246,9 @@ try {
   mode = 'success';
   record('Concurrent tabs share a request lock and reuse the completed result');
 
-  await page.getByRole('button', { name: '切换深色主题' }).click();
+  await page.getByRole('button', { name: '打开设置' }).click();
+  await page.getByRole('combobox', { name: /主题/ }).selectOption('dark');
+  await page.getByRole('button', { name: '保存设置', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.screenshot({ path: path.join(artifacts, 'results-dark.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -242,16 +257,29 @@ try {
     .toBe(true);
   await page.screenshot({ path: path.join(artifacts, 'results-mobile.png'), fullPage: true });
   await page.getByRole('button', { name: 'SeekTab 首页' }).click();
-  await expect(page.getByRole('heading', { name: '好奇心，从这里开始。' })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: '搜索网页', exact: true })).toHaveValue('');
+  await expect(
+    page.locator('.hero, .quick-section, .recent-section, .page-footer, .search-aside'),
+  ).toHaveCount(0);
+  await page.setViewportSize({ width: 320, height: 700 });
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: path.join(artifacts, 'home-mobile.png'), fullPage: true });
   record('Desktop and 390px responsive light/dark layouts have no horizontal overflow');
   await page.setViewportSize({ width: 1440, height: 1000 });
 
+  await page.getByRole('button', { name: '打开设置' }).click();
+  const settingsBeforeShortcut = await page.evaluate(
+    async () => (await chrome.storage.local.get('settings')).settings,
+  );
+  await page.getByRole('combobox', { name: /每次返回/ }).selectOption('20');
   await page.getByRole('button', { name: '添加快捷链接', exact: true }).click();
   await page.getByLabel('名称', { exact: true }).fill('测试工作台');
   await page.getByLabel('网址', { exact: true }).fill('example.com/work');
   await page.getByRole('button', { name: '保存链接', exact: true }).click();
-  await expect(page.getByRole('link', { name: '测 测试工作台' })).toHaveAttribute(
+  await expect(page.getByRole('link', { name: '测试工作台' })).toHaveAttribute(
     'href',
     'https://example.com/work',
   );
@@ -259,7 +287,32 @@ try {
   await page.getByRole('button', { name: '编辑 测试工作台', exact: true }).click();
   await page.getByRole('button', { name: '删除链接', exact: true }).click();
   await expect(page.getByRole('button', { name: '编辑 测试工作台', exact: true })).toHaveCount(0);
-  record('Quick links can be added, normalized, edited and deleted');
+  await expect(page.getByRole('combobox', { name: /每次返回/ })).toHaveValue('20');
+  await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
+  expect(
+    await page.evaluate(async () => (await chrome.storage.local.get('settings')).settings),
+  ).toEqual(settingsBeforeShortcut);
+  record(
+    'Settings retain unsaved drafts through shortcut editing; shortcuts remain editable without changing saved preferences',
+  );
+
+  const beforeReload = await page.evaluate(() => chrome.storage.local.get(null));
+  await page.reload();
+  expect(await page.evaluate(() => chrome.storage.local.get(null))).toEqual(beforeReload);
+  await page.getByRole('button', { name: '打开设置' }).click();
+  await expect(page.getByRole('link', { name: 'GitHub', exact: true })).toBeVisible();
+  await expect(page.getByLabel('DeepSeek API Key', { exact: true })).toHaveValue(
+    'test-only-not-a-real-key',
+  );
+  await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
+  await page.getByRole('button', { name: '搜索历史', exact: true }).click();
+  await expect(
+    page.getByRole('dialog').getByRole('button').filter({ hasText: '寻找下一次发现' }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  record(
+    'Reload preserves the complete saved state; history and existing shortcuts remain accessible',
+  );
 
   for (const [apiMode, message] of [
     ['401', 'API Key 无效或已失效'],
@@ -279,17 +332,17 @@ try {
   await expect(page.getByRole('alert')).toContainText('搜索请求有点频繁');
   await expect(page.getByRole('status').filter({ hasText: '服务限流' })).toBeVisible();
   await expect(page.getByRole('button', { name: /秒后重试/ })).toBeDisabled();
-  await expect(page.getByRole('button', { name: '重新搜索', exact: true })).toBeEnabled({
+  await expect(page.getByRole('button', { name: '重试', exact: true })).toBeEnabled({
     timeout: 5000,
   });
   mode = 'success';
-  await page.getByRole('button', { name: '重新搜索', exact: true }).click();
+  await page.getByRole('button', { name: '重试', exact: true }).click();
   await expect(page.locator('.result-card')).toHaveCount(3);
   record('429 Retry-After countdown recovers with explicit retry');
 
   mode = 'empty';
   await submit('case-empty');
-  await expect(page.getByRole('heading', { name: '换个角度，继续探索' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '无结果' })).toBeVisible();
   mode = 'unsafe';
   await submit('case-injection');
   await expect(page.locator('.result-card')).toHaveCount(1);
@@ -301,7 +354,7 @@ try {
   await submit('case-cancel');
   await expect(page.getByRole('button', { name: '停止', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '停止', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '这次搜索已暂停' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '搜索已取消' })).toBeVisible();
   await page.waitForTimeout(1100);
   await expect(page.locator('.result-card')).toHaveCount(0);
   data = await page.evaluate(() => chrome.storage.local.get(null));
@@ -359,6 +412,12 @@ try {
     ),
   );
   console.log(`${checks.length} browser checks passed. Real API calls: 0.`);
+} catch (error) {
+  const failedPage = context?.pages().find((page) => page.url().startsWith('chrome-extension:'));
+  await failedPage
+    ?.screenshot({ path: path.join(artifacts, 'failure.png'), fullPage: true })
+    .catch(() => {});
+  throw error;
 } finally {
   await context?.close();
   await rm(profile, { recursive: true, force: true });

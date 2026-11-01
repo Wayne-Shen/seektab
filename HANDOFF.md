@@ -1,5 +1,13 @@
 # SeekTab → DeepSeek Harness 开发交接
 
+## 2026-11-01：v1.1.0 搜索优先改版
+
+用户已批准 Material 3 Expressive 风格改版、GitHub Actions 构建与本机原路径更新。首页仅保留搜索、历史和设置入口；快捷链接移入设置，原有存储结构、API 请求、锁与隐私逻辑保持不变。设置支持在保留未保存草稿的情况下编辑快捷链接。版本来自清单。
+
+本次使用已部署的 ci.yml 构建、测试和上传 seektab-packages；当前 GitHub token 仍不含 workflow scope，因此没有上传或改动 workflow 文件。旧本地 main 上的 release.yml 提交继续保留，当前功能分支从远端 main 起步。发布应使用成功 CI 运行的 ZIP 和校验文件，不要用本机 ZIP 替代。更新时替换现有安装目录内容并重新加载，核对 ID，保留 chrome.storage；不要卸载或引入新的 manifest key。
+
+下面为历史交接记录。
+
 交接日期：2026-10-30（功能现状沿用 2026-10-29 的记录）。本文描述已有实现，供下一位开发者继续工作；不是新的功能需求清单。
 
 ## 1. 项目身份与当前状态

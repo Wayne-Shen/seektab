@@ -8,11 +8,11 @@
 
 > 当前扩展界面使用简体中文，仓库提供中英双语文档。本项目为独立开源项目，与 DeepSeek 官方无隶属关系。
 
-一个轻盈的个人搜索新标签页。使用自己的 DeepSeek API Key，直接获取网页结果；无后端、无账号系统、无 AI 回答。
+采用 Material 3 Expressive 风格的极简搜索新标签页。使用自己的 DeepSeek API Key，直接获取网页结果；无后端、无账号系统、无 AI 回答。
 
 ## 安装（无需编译）
 
-1. 从 [Releases](https://github.com/Wayne-Shen/seektab/releases/latest) 下载并解压 `SeekTab-1.0.0-unpacked.zip`，将 `SeekTab-unpacked` 文件夹放到一个长期保留的位置。
+1. 从 [Releases](https://github.com/Wayne-Shen/seektab/releases/latest) 下载并解压 `SeekTab-1.1.0-unpacked.zip`，将 `SeekTab-unpacked` 文件夹放到一个长期保留的位置。
 2. 在 Chrome 地址栏输入 `chrome://extensions`，开启右上角的 **开发者模式**。
 3. 点击 **加载已解压的扩展程序**，选择包含 `manifest.json` 的 **SeekTab-unpacked 文件夹**。不要选择 ZIP，也不要选择它的上一级文件夹。
 4. 新建标签页。如果 Chrome 询问是否保留更改，选择保留 SeekTab。
@@ -22,12 +22,18 @@
 
 **首次使用说明：** 测试连接会实际调用一次 Search 接口，搜索词为「DeepSeek」，可能产生 API 费用；测试不保存密钥，也不写入历史或缓存。保存设置后密钥才会留在本机。
 
+## 更新已有安装
+
+先备份当前扩展文件夹，再将经过校验的发布 ZIP 中 `SeekTab-unpacked` 的内容替换到**原来的同一路径**。在 `chrome://extensions` 点击已有 SeekTab 条目的「重新加载」，核对更新前后的扩展 ID。保留原安装条目可保留本地设置、密钥、历史、缓存与快捷链接；更新时不要卸载或加载另一目录。新的 manifest key 或不同的解压路径可能改变 ID。
+
+发布 ZIP 由 GitHub Actions 构建并测试，附带 SHA-256 校验文件。首页只保留搜索入口；历史通过图标打开，主题与快捷链接位于设置中。
+
 ## 已实现的功能
 
 - Manifest V3 新标签页替换，浅色、深色及跟随系统。
 - DeepSeek 网页搜索，展示标题、短摘要、来源域名及可用的发布时间；未知时间不显示。
 - 每次返回 5 / 10 / 20 条，默认 10 条；支持 API 原生搜索操作符。
-- 自定义快捷链接：新增、编辑、删除，最多 8 个；鼠标悬停或键盘聚焦可显示编辑入口。
+- 设置内的快捷链接：访问、新增、编辑、删除，最多 8 个；原有链接继续保留。
 - 密钥掩码、显示/隐藏、连接测试、保存和立即移除。
 - 最近 50 条成功搜索，按搜索词去重；可关闭、可清除。
 - 最多 20 组本地结果缓存，固定有效期 15 分钟；复用不会延长有效期，可手动刷新。
