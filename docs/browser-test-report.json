@@ -9,7 +9,8 @@
     "Local cache avoids requests, preserves fixed TTL, and supports refresh",
     "Concurrent tabs share a request lock and reuse the completed result",
     "Desktop and 390px responsive light/dark layouts have no horizontal overflow",
-    "Quick links can be added, normalized, edited and deleted",
+    "Settings retain unsaved drafts through shortcut editing; shortcuts remain editable without changing saved preferences",
+    "Reload preserves the complete saved state; history and existing shortcuts remain accessible",
     "Safe error UI for 401",
     "Safe error UI for 402",
     "Safe error UI for 500",
@@ -23,14 +24,9 @@
     "Key removal persists after reload",
     "No remote favicon/font/analytics requests or uncaught page errors"
   ],
-  "passed": 22,
+  "passed": 23,
   "apiRequestsMocked": 15,
   "realApiCalls": 0,
-  "viewport": ["1440×1000", "390×844", "320×700 (settings)"],
-  "browser": "147.0.7727.15",
-  "verifiedOn": "2026-10-22",
-  "unitTestsPassed": 17,
-  "typeCheck": "passed",
-  "productionBuild": "passed",
-  "formatCheck": "passed"
+  "viewport": ["1440×1000", "390×844"],
+  "browser": "147.0.7727.15"
 }
