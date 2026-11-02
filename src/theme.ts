@@ -6,3 +6,7 @@ document.documentElement.dataset.theme =
     : matchMedia('(prefers-color-scheme: dark)').matches
       ? 'dark'
       : 'light';
+const accent = localStorage.getItem('seektab-accent');
+document.documentElement.dataset.accent = ['amber', 'sky', 'mint', 'coral'].includes(accent ?? '')
+  ? accent!
+  : 'amber';

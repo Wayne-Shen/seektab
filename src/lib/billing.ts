@@ -1,3 +1,6 @@
+import { t } from './i18n';
+
+class BillingError extends Error {}
 import { readState } from './store';
 
 export type Outcome = 'results' | 'empty' | 'failed' | 'cancelled';
@@ -84,10 +87,10 @@ export async function fetchBalance(
   key: string,
   signal?: AbortSignal,
 ): Promise<{ rows: BalanceRow[]; available: boolean }> {
-  if (!key.trim()) throw new Error('请先在设置中保存 API Key。');
+  if (!key.trim()) throw new BillingError(t('请先在设置中保存 API Key。'));
   const controller = new AbortController();
   const abort = () => controller.abort();
-  if (signal?.aborted) throw new Error('查询已取消。');
+  if (signal?.aborted) throw new BillingError(t('查询已取消。'));
   signal?.addEventListener('abort', abort, { once: true });
   const timer = setTimeout(abort, 15000);
   try {
@@ -100,8 +103,9 @@ export async function fetchBalance(
       redirect: 'error',
       referrerPolicy: 'no-referrer',
     });
-    if (response.status === 401) throw new Error('API Key 无效，请检查设置。');
-    if (!response.ok) throw new Error(`余额查询失败（HTTP ${response.status}）。`);
+    if (response.status === 401) throw new BillingError(t('API Key 无效，请检查设置。'));
+    if (!response.ok)
+      throw new BillingError(t('余额查询失败（HTTP {status}）。', { status: response.status }));
     const data: unknown = await response.json();
     if (
       !data ||
@@ -111,9 +115,9 @@ export async function fetchBalance(
       !('balance_infos' in data) ||
       !Array.isArray(data.balance_infos)
     )
-      throw new Error('余额响应格式无效。');
+      throw new BillingError(t('余额响应格式无效。'));
     const rows: BalanceRow[] = data.balance_infos.map((r: unknown) => {
-      if (!r || typeof r !== 'object') throw new Error('余额响应格式无效。');
+      if (!r || typeof r !== 'object') throw new BillingError(t('余额响应格式无效。'));
       const row = r as Record<string, unknown>;
       const amount = (v: unknown) => typeof v === 'string' && /^\d{1,18}(?:\.\d{1,8})?$/.test(v);
       if (
@@ -122,7 +126,7 @@ export async function fetchBalance(
         !amount(row.granted_balance) ||
         !amount(row.topped_up_balance)
       )
-        throw new Error('余额响应格式无效。');
+        throw new BillingError(t('余额响应格式无效。'));
       return {
         currency: row.currency as string,
         total: row.total_balance as string,
@@ -132,15 +136,9 @@ export async function fetchBalance(
     });
     return { rows, available: data.is_available };
   } catch (e) {
-    if (
-      e instanceof Error &&
-      (e.message.startsWith('API Key') ||
-        e.message.startsWith('余额') ||
-        e.message.startsWith('请先'))
-    )
-      throw e;
-    throw new Error(
-      controller.signal.aborted ? '余额查询已取消或超时。' : '无法连接 DeepSeek 余额接口。',
+    if (e instanceof BillingError) throw e;
+    throw new BillingError(
+      controller.signal.aborted ? t('余额查询已取消或超时。') : t('无法连接 DeepSeek 余额接口。'),
     );
   } finally {
     clearTimeout(timer);
@@ -160,7 +158,7 @@ export async function refreshBillingReport(signal?: AbortSignal): Promise<Billin
     balanceAt = Date.now();
   } catch (e) {
     if (signal?.aborted) throw e;
-    balanceError = e instanceof Error ? e.message : '余额查询失败。';
+    balanceError = e instanceof Error ? e.message : t('余额查询失败。');
   }
   return navigator.locks.request(LOCK, async () => {
     const data = await chrome.storage.local.get(LEDGER_KEY);

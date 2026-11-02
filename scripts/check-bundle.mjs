@@ -10,7 +10,7 @@ assert.equal(lock.version, packageInfo.version, 'Lockfile version must match');
 assert.equal(lock.packages[''].version, packageInfo.version);
 assert.equal(manifest.key, undefined, 'Do not replace the existing unpacked installation identity');
 assert.equal(manifest.manifest_version, 3);
-assert.deepEqual(manifest.permissions, ['storage']);
+assert.deepEqual(manifest.permissions, ['storage', 'tabs', 'bookmarks', 'history', 'favicon']);
 assert.deepEqual(manifest.host_permissions, ['https://api.deepseek.com/*']);
 assert.equal(manifest.chrome_url_overrides.newtab, 'index.html');
 assert(!manifest.background && !manifest.content_scripts && !manifest.externally_connectable);

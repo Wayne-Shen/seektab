@@ -1,4 +1,11 @@
+export type Locale = 'zh' | 'en';
+export const AI_MODELS = ['deepseek-flash', 'deepseek-v4-pro'] as const;
+export type AiModel = (typeof AI_MODELS)[number];
+export const AI_TOKEN_CHOICES = [2000, 4000, 8000] as const;
+export type SortBy = 'relevance' | 'date';
 export type Theme = 'system' | 'light' | 'dark';
+export const ACCENTS = ['amber', 'sky', 'mint', 'coral'] as const;
+export type Accent = (typeof ACCENTS)[number];
 export interface Settings {
   theme: Theme;
   count: number;
@@ -16,6 +23,19 @@ export interface Settings {
   showScores: boolean;
   localization: string;
   needContent: boolean;
+  accent: Accent;
+  locale: Locale;
+  sortBy: SortBy;
+  aiEnabled: boolean;
+  aiAcknowledged: boolean;
+  aiModel: AiModel;
+  aiSources: number;
+  aiMaxTokens: number;
+  aiDailyCap: number;
+  clock12: boolean;
+  searchTabs: boolean;
+  searchBookmarks: boolean;
+  searchHistory: boolean;
 }
 export interface QuickLink {
   id: string;
@@ -70,6 +90,19 @@ export const DEFAULT_SETTINGS: Settings = {
   showScores: false,
   localization: '',
   needContent: false,
+  accent: 'amber',
+  locale: 'zh',
+  sortBy: 'relevance',
+  aiEnabled: true,
+  aiAcknowledged: false,
+  aiModel: 'deepseek-flash',
+  aiSources: 8,
+  aiMaxTokens: 4000,
+  aiDailyCap: 20,
+  clock12: false,
+  searchTabs: true,
+  searchBookmarks: true,
+  searchHistory: true,
 };
 export const DEFAULT_LINKS: QuickLink[] = [
   { id: 'deepseek', title: 'DeepSeek', url: 'https://chat.deepseek.com/' },
