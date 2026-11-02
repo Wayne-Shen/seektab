@@ -6,7 +6,7 @@ Read this file, `agent.md`, and `HANDOFF.md` before changing the project. These 
 
 SeekTab is a Manifest V3 Chrome New Tab extension for personal web search with the user's own DeepSeek API key. The local folder may be named `dsh-search`; the product and public repository remain SeekTab and `Wayne-Shen/seektab`.
 
-The approved MVP uses direct provider requests, structured web results, local storage, and no application backend. It does not generate AI answers. Keep that behavior unless the user asks to expand it. Do not infer a new feature request from a handoff document or roadmap suggestion.
+The approved MVP uses direct provider requests, structured web results, local storage, and no application backend. AI answers were added later at the user's request (2026-11-02): they are explicit-only (never on typing or page load), built from Search results plus one streamed `POST /responses` call, kept in memory, and counted locally. Do not expand AI behavior (Fetch, `web_search`, follow-ups, persistence) unless the user asks. Do not infer a new feature request from a handoff document or roadmap suggestion.
 
 The interface currently uses Simplified Chinese. `README.md` is the English default, and `README_CN.md` is the Chinese version; preserve the language-switch links. Original code uses MIT; keep `LICENSE`, `public/LICENSE`, and dependency notices consistent.
 
@@ -28,7 +28,7 @@ Read the implementation before changing any contract. Web Locks have two roles: 
 - The provider contract was checked on 2026-10-22. Re-check official documentation before changing endpoint, authentication, request fields, response handling, or stated limits. See `docs/API-VERIFICATION.md`.
 - Real-account authentication and live results have not been validated with a user key. Mock tests do not establish live service availability.
 - Do not read keys from browser profiles, credential stores, environment files, or unrelated projects. The user enters a key through Settings. Do not print or commit keys, personal queries, or provider raw errors.
-- Keep production permissions limited to `storage` and `https://api.deepseek.com/*` unless a requested feature requires a reviewed change. Preserve the strict CSP, local assets, escaped text rendering, and HTTP/HTTPS URL validation.
+- Keep production permissions limited to `storage`, `tabs`, `bookmarks`, `history` (local Command-palette search only; never upload or persist their contents), `favicon` (Chrome's local favicon cache for shortcut icons; no remote favicon requests) and `https://api.deepseek.com/*` unless a requested feature requires a reviewed change. Preserve the strict CSP, local assets, escaped text rendering, and HTTP/HTTPS URL validation.
 - Do not add content scripts, broad host permissions, remote code, analytics, a proxy/backend, or an external messaging bridge as an incidental implementation choice.
 - A connection test is a real search request that may be billed; preserve the existing notice and never make paid calls in automated tests.
 

@@ -1,6 +1,13 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
-  ArrowLeft,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from 'react';
+import {
   ArrowRight,
   ArrowUpRight,
   Check,
@@ -16,25 +23,57 @@ import {
   LoaderCircle,
   LockKeyhole,
   Plus,
+  Languages,
+  RotateCcw,
+  Moon,
   Search,
   Settings2,
+  Sparkles,
+  Sun,
   ShieldCheck,
   SlidersHorizontal,
   Trash2,
   X,
 } from 'lucide-react';
-import { safeUrl, SearchError, validateQuery } from './lib/api';
+import { safeUrl, SearchError, sortResults, validateQuery } from './lib/api';
+import { getLocale, normalizeLocale, setLocale, t } from './lib/i18n';
 import {
   clearData,
   initialize,
   readState,
   removeApiKey,
   savePreferences,
+  setPreference,
   updateState,
 } from './lib/store';
+import {
+  askAi,
+  buildSources,
+  readAiUsage,
+  splitCitations,
+  type AiAnswer,
+  type AiSource,
+} from './lib/ai';
 import { runSearch, testConnection, type SearchResponse } from './lib/search';
-import type { LocalState, QuickLink, Settings } from './lib/types';
+import {
+  ACCENTS,
+  AI_MODELS,
+  AI_TOKEN_CHOICES,
+  type LocalState,
+  type QuickLink,
+  type SearchResult,
+  type Settings,
+} from './lib/types';
 import { version } from '../public/manifest.json';
+import {
+  activateTab,
+  display,
+  enabledSources,
+  matches,
+  searchBrowser,
+  type BrowserItem,
+  type SourceId,
+} from './lib/browser';
 import { readBillingReport, refreshBillingReport, type BillingReport } from './lib/billing';
 
 function Mark({ small = false }: { small?: boolean }) {
@@ -87,7 +126,7 @@ function Modal({
             <h2 id={titleId}>{title}</h2>
             {subtitle && <p>{subtitle}</p>}
           </div>
-          <button className="icon-button" onClick={onClose} aria-label="关闭弹窗">
+          <button className="icon-button" onClick={onClose} aria-label={t('关闭弹窗')}>
             <X size={20} />
           </button>
         </header>
@@ -122,15 +161,21 @@ function BillingModal({ onClose }: { onClose: () => void }) {
   const [report, setReport] = useState<BillingReport | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [aiDays, setAiDays] = useState<Awaited<ReturnType<typeof readAiUsage>>>([]);
   const abortRef = useRef<AbortController | null>(null);
   useEffect(() => {
     let active = true;
+    readAiUsage()
+      .then((days) => {
+        if (active) setAiDays(days);
+      })
+      .catch(() => {});
     readBillingReport()
       .then((value) => {
         if (active) setReport(value);
       })
       .catch(() => {
-        if (active) setError('无法读取本地报表。');
+        if (active) setError(t('无法读取本地报表。'));
       });
     return () => {
       active = false;
@@ -146,7 +191,7 @@ function BillingModal({ onClose }: { onClose: () => void }) {
       const next = await refreshBillingReport(abort.signal);
       if (!abort.signal.aborted) setReport(next);
     } catch {
-      if (!abort.signal.aborted) setError('刷新失败，请检查本地存储后重试。');
+      if (!abort.signal.aborted) setError(t('刷新失败，请检查本地存储后重试。'));
     } finally {
       if (!abort.signal.aborted) setBusy(false);
     }
@@ -166,7 +211,7 @@ function BillingModal({ onClose }: { onClose: () => void }) {
     ...days.slice(0, 30).map((d) => d.results + d.empty + d.failed + d.cancelled),
   );
   const fmt = (at: number) =>
-    new Date(at).toLocaleString('zh-CN', {
+    new Date(at).toLocaleString(dateLocale(), {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -176,10 +221,12 @@ function BillingModal({ onClose }: { onClose: () => void }) {
       timeZoneName: 'short',
     });
   return (
-    <Modal title="API 用量与余额" onClose={onClose} wide>
+    <Modal title={t('API 用量与余额')} onClose={onClose} wide>
       <div className="billing-report" aria-busy={busy}>
         <div className="billing-toolbar">
-          <span>{report ? `数据截止：${fmt(report.refreshedAt)}` : '尚未刷新'}</span>
+          <span>
+            {report ? t('数据截止：{time}', { time: fmt(report.refreshedAt) }) : t('尚未刷新')}
+          </span>
           <button
             className="button primary"
             type="button"
@@ -187,12 +234,13 @@ function BillingModal({ onClose }: { onClose: () => void }) {
             onClick={() => void refresh()}
           >
             {busy ? <LoaderCircle size={16} className="spin" /> : <BarChart3 size={16} />}{' '}
-            {busy ? '刷新中…' : '刷新'}
+            {busy ? t('刷新中…') : t('刷新')}
           </button>
         </div>
         <p className="field-help">
-          仅点击刷新时查询余额并更新报表。统计只覆盖此扩展在本机完成的 Search
-          请求，包含连接测试及使用过的所有 API Key；不包含缓存命中、进行中的请求和其他应用的请求。
+          {t(
+            '仅点击刷新时查询余额并更新报表。统计只覆盖此扩展在本机完成的 Search 请求，包含连接测试及使用过的所有 API Key；不包含缓存命中、进行中的请求和其他应用的请求。',
+          )}
         </p>
         {error && (
           <p role="alert" className="feedback error">
@@ -202,7 +250,7 @@ function BillingModal({ onClose }: { onClose: () => void }) {
         {report && (
           <>
             <section className="billing-section">
-              <h3>账户余额</h3>
+              <h3>{t('账户余额')}</h3>
               {report.balance ? (
                 <>
                   {report.balance.length ? (
@@ -212,67 +260,71 @@ function BillingModal({ onClose }: { onClose: () => void }) {
                           {row.currency} {row.total}
                         </strong>
                         <span>
-                          赠送 {row.granted} · 充值 {row.toppedUp}
+                          {t('赠送 {granted} · 充值 {toppedUp}', {
+                            granted: row.granted,
+                            toppedUp: row.toppedUp,
+                          })}
                         </span>
                       </div>
                     ))
                   ) : (
-                    <p>没有可显示的余额。</p>
+                    <p>{t('没有可显示的余额。')}</p>
                   )}
                   <p className="tiny muted">
-                    余额查询时间：{report.balanceAt ? fmt(report.balanceAt) : '未知'}
-                    ；关联刷新时使用的 API Key。
+                    {t('余额查询时间：{time}；关联刷新时使用的 API Key。', {
+                      time: report.balanceAt ? fmt(report.balanceAt) : t('未知'),
+                    })}
                   </p>
                 </>
               ) : (
-                <p role="status">{report.balanceError || '余额不可用。'}</p>
+                <p role="status">{report.balanceError || t('余额不可用。')}</p>
               )}
             </section>
             <section className="billing-section">
-              <h3>本机请求报表</h3>
+              <h3>{t('本机请求报表')}</h3>
               <p className="tiny muted">
                 {report.trackingSince
-                  ? `记录起点：${fmt(report.trackingSince)}`
-                  : '尚无记录；安装此功能之后的请求才会被统计。'}{' '}
-                按设备本地日期分组，最多保留最近 366
-                个有请求的日期。扩展关闭或本地存储不可用可能导致记录不完整；统计并非 DeepSeek
-                官方账单。
+                  ? t('记录起点：{time}', { time: fmt(report.trackingSince) })
+                  : t('尚无记录；安装此功能之后的请求才会被统计。')}{' '}
+                {t(
+                  '按设备本地日期分组，最多保留最近 366 个有请求的日期。扩展关闭或本地存储不可用可能导致记录不完整；统计并非 DeepSeek 官方账单。',
+                )}
               </p>
               <div className="billing-totals">
                 <span>
-                  已完成{' '}
+                  {t('已完成')}{' '}
                   <strong>
                     {totals.results + totals.empty + totals.failed + totals.cancelled}
                   </strong>
                 </span>
                 <span>
-                  有结果 <strong>{totals.results}</strong>
+                  {t('有结果')} <strong>{totals.results}</strong>
                 </span>
                 <span>
-                  空结果 <strong>{totals.empty}</strong>
+                  {t('空结果')} <strong>{totals.empty}</strong>
                 </span>
                 <span>
-                  失败 <strong>{totals.failed}</strong>
+                  {t('失败')} <strong>{totals.failed}</strong>
                 </span>
                 <span>
-                  取消 <strong>{totals.cancelled}</strong>
+                  {t('取消')} <strong>{totals.cancelled}</strong>
                 </span>
               </div>
               <p className="tiny muted">
-                有结果不等于确认已计费；取消、网络中断或响应异常时，以服务商账单为准。
+                {t('有结果不等于确认已计费；取消、网络中断或响应异常时，以服务商账单为准。')}
               </p>
               {days.length > 0 && (
                 <div className="billing-scroll">
                   <table>
-                    <caption>最近 30 个有请求的日期</caption>
+                    <caption>{t('最近 30 个有请求的日期')}</caption>
                     <thead>
                       <tr>
-                        <th scope="col">日期</th>
-                        <th scope="col">请求量</th>
-                        <th scope="col">有结果</th>
-                        <th scope="col">空结果</th>
-                        <th scope="col">失败</th>
-                        <th scope="col">取消</th>
+                        <th scope="col">{t('日期')}</th>
+                        <th scope="col">{t('请求量')}</th>
+                        <th scope="col">{t('有结果')}</th>
+                        <th scope="col">{t('空结果')}</th>
+                        <th scope="col">{t('失败')}</th>
+                        <th scope="col">{t('取消')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -303,9 +355,21 @@ function BillingModal({ onClose }: { onClose: () => void }) {
             </section>
           </>
         )}
+        {aiDays.length > 0 && (
+          <section className="billing-section">
+            <h3>{t('AI 回答')}</h3>
+            <p className="tiny muted">
+              {t('本机记录：请求 {r} 次，输入 {i} / 输出 {o} tokens（不含问题内容）。', {
+                r: aiDays.reduce((a, d) => a + d.requests, 0),
+                i: aiDays.reduce((a, d) => a + d.inputTokens, 0),
+                o: aiDays.reduce((a, d) => a + d.outputTokens, 0),
+              })}
+            </p>
+          </section>
+        )}
         <p className="field-help">
           <a href="https://platform.deepseek.com/usage" target="_blank" rel="noopener noreferrer">
-            查看 DeepSeek 平台完整用量与账单 <ArrowUpRight size={14} />
+            {t('查看 DeepSeek 平台完整用量与账单')} <ArrowUpRight size={14} />
           </a>
         </p>
       </div>
@@ -339,7 +403,7 @@ function SettingsModal({
   async function test() {
     setFeedback(null);
     if (!key.trim() || key.trim().length > 512 || /\s/.test(key.trim())) {
-      setFeedback({ text: '请填写有效的 API Key，仅粘贴密钥本身。', ok: false });
+      setFeedback({ text: t('请填写有效的 API Key，仅粘贴密钥本身。'), ok: false });
       return;
     }
     setTesting(true);
@@ -348,11 +412,11 @@ function SettingsModal({
     try {
       const ms = await testConnection(key, abort.signal);
       if (!abort.signal.aborted)
-        setFeedback({ text: `连接成功 · 搜索接口可用 · ${ms} ms`, ok: true });
+        setFeedback({ text: t('连接成功 · 搜索接口可用 · {ms} ms', { ms }), ok: true });
     } catch (e) {
       if (!abort.signal.aborted)
         setFeedback({
-          text: e instanceof SearchError ? e.message : '测试失败，请检查本地存储和网络后重试。',
+          text: e instanceof SearchError ? e.message : t('测试失败，请检查本地存储和网络后重试。'),
           ok: false,
         });
     } finally {
@@ -365,10 +429,10 @@ function SettingsModal({
     setFeedback(null);
     try {
       await savePreferences(draft, key);
-      onSaved('设置已保存在本机');
+      onSaved(t('设置已保存在本机'));
       onClose();
     } catch (e) {
-      setFeedback({ text: e instanceof Error ? e.message : '保存失败，请重试。', ok: false });
+      setFeedback({ text: e instanceof Error ? e.message : t('保存失败，请重试。'), ok: false });
     } finally {
       setSaving(false);
     }
@@ -376,19 +440,19 @@ function SettingsModal({
   async function clear(kind: 'history' | 'cache') {
     try {
       await clearData(kind);
-      setDataFeedback(kind === 'history' ? '搜索历史已清除' : '搜索缓存已清除');
+      setDataFeedback(kind === 'history' ? t('搜索历史已清除') : t('搜索缓存已清除'));
     } catch {
-      setDataFeedback('清除失败，请重试');
+      setDataFeedback(t('清除失败，请重试'));
     }
   }
   return (
     <>
-      <Modal title="设置" onClose={onClose} wide>
+      <Modal title={t('设置')} onClose={onClose} wide>
         <form onSubmit={save}>
           <section className="settings-section">
             <div className="section-label">
               <LockKeyhole size={17} />
-              <h3>连接 DeepSeek</h3>
+              <h3>{t('连接 DeepSeek')}</h3>
             </div>
             <label className="field-label" htmlFor="api-key">
               DeepSeek API Key
@@ -400,7 +464,7 @@ function SettingsModal({
                 id="api-key"
                 name="api-key"
                 type={visible ? 'text' : 'password'}
-                placeholder="粘贴你的 API Key"
+                placeholder={t('粘贴你的 API Key')}
                 value={key}
                 maxLength={512}
                 onChange={(e) => {
@@ -411,20 +475,20 @@ function SettingsModal({
               <button
                 type="button"
                 className="icon-button"
-                aria-label={visible ? '隐藏密钥' : '显示密钥'}
+                aria-label={visible ? t('隐藏密钥') : t('显示密钥')}
                 onClick={() => setVisible((v) => !v)}
               >
                 {visible ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
             <p className="field-help">
-              密钥存于 Chrome 本地存储，不会同步。具有本机访问权限的人可能读取它。
+              {t('密钥存于 Chrome 本地存储，不会同步。具有本机访问权限的人可能读取它。')}
               <a
                 href="https://platform.deepseek.com/api_keys"
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                获取密钥 <ExternalLink size={12} />
+                {t('获取密钥')} <ExternalLink size={12} />
               </a>
             </p>
             <div className="connection-actions">
@@ -435,7 +499,11 @@ function SettingsModal({
                 disabled={testing || saving || !key.trim() || cooldown > 0}
               >
                 {testing ? <LoaderCircle size={15} className="spin" /> : <Globe2 size={15} />}{' '}
-                {testing ? '正在测试…' : cooldown > 0 ? `请等待 ${cooldown} 秒` : '测试连接'}
+                {testing
+                  ? t('正在测试…')
+                  : cooldown > 0
+                    ? t('请等待 {n} 秒', { n: cooldown })
+                    : t('测试连接')}
               </button>
               {state.apiKey && (
                 <button
@@ -446,18 +514,20 @@ function SettingsModal({
                     try {
                       await removeApiKey();
                       setKey('');
-                      setFeedback({ text: '已移除本机保存的密钥', ok: true });
+                      setFeedback({ text: t('已移除本机保存的密钥'), ok: true });
                     } catch {
-                      setFeedback({ text: '移除失败，请重试。', ok: false });
+                      setFeedback({ text: t('移除失败，请重试。'), ok: false });
                     }
                   }}
                 >
-                  移除已存密钥
+                  {t('移除已存密钥')}
                 </button>
               )}
             </div>
             <p className="tiny muted">
-              测试会向 DeepSeek 发送一次「DeepSeek」搜索，可能产生 API 费用；不会写入历史或缓存。
+              {t(
+                '测试会向 DeepSeek 发送一次「DeepSeek」搜索，可能产生 API 费用；不会写入历史或缓存。',
+              )}
             </p>
             {feedback && (
               <p className={`feedback ${feedback.ok ? 'success' : 'error'}`} role="status">
@@ -468,45 +538,100 @@ function SettingsModal({
           <section className="settings-section">
             <div className="section-label">
               <SlidersHorizontal size={17} />
-              <h3>外观与搜索</h3>
+              <h3>{t('外观与搜索')}</h3>
             </div>
             <div className="settings-grid">
               <label className="field-label">
-                主题
+                {t('主题')}
                 <select
                   value={draft.theme}
                   onChange={(e) => patch({ theme: e.target.value as Settings['theme'] })}
                 >
-                  <option value="system">跟随系统</option>
-                  <option value="light">浅色</option>
-                  <option value="dark">深色</option>
+                  <option value="system">{t('跟随系统')}</option>
+                  <option value="light">{t('浅色')}</option>
+                  <option value="dark">{t('深色')}</option>
                 </select>
               </label>
               <label className="field-label">
-                每次返回
+                {t('每次返回')}
                 <select
                   value={draft.count}
                   onChange={(e) => patch({ count: Number(e.target.value) })}
                 >
                   {Array.from({ length: 50 }, (_, i) => i + 1).map((count) => (
                     <option key={count} value={count}>
-                      {count} 条结果
+                      {t('{n} 条结果', { n: count })}
                     </option>
                   ))}
                 </select>
               </label>
             </div>
+            <div className="settings-grid">
+              <label className="field-label">
+                {t('界面语言')}
+                <select
+                  value={draft.locale}
+                  onChange={(e) => patch({ locale: e.target.value as Settings['locale'] })}
+                >
+                  <option value="zh">中文</option>
+                  <option value="en">English</option>
+                </select>
+              </label>
+              <label className="field-label">
+                {t('强调色')}
+                <select
+                  value={draft.accent}
+                  onChange={(e) => patch({ accent: e.target.value as Settings['accent'] })}
+                >
+                  {ACCENTS.map((a) => (
+                    <option key={a} value={a}>
+                      {accentLabel(a)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-label">
+                {t('时钟')}
+                <select
+                  value={draft.clock12 ? '12' : '24'}
+                  onChange={(e) => patch({ clock12: e.target.value === '12' })}
+                >
+                  <option value="24">{t('24 小时制')}</option>
+                  <option value="12">{t('12 小时制')}</option>
+                </select>
+              </label>
+            </div>
+            <Toggle
+              label={t('搜索已打开的标签页')}
+              description={t('输入时在本机匹配所有窗口的标签页标题和网址。')}
+              checked={draft.searchTabs}
+              onChange={(searchTabs) => patch({ searchTabs })}
+            />
+            <Toggle
+              label={t('搜索书签')}
+              description={t('输入时在本机查询 Chrome 书签。')}
+              checked={draft.searchBookmarks}
+              onChange={(searchBookmarks) => patch({ searchBookmarks })}
+            />
+            <Toggle
+              label={t('搜索 Chrome 浏览历史')}
+              description={t('输入时在本机查询浏览历史；不会上传，也不会被保存到 SeekTab。')}
+              checked={draft.searchHistory}
+              onChange={(searchHistory) => patch({ searchHistory })}
+            />
             <details className="advanced-settings">
-              <summary>高级搜索筛选</summary>
-              <p className="field-help">筛选会附加到每次搜索；搜索词与筛选合计最多 128 个字符。</p>
+              <summary>{t('高级搜索筛选')}</summary>
+              <p className="field-help">
+                {t('筛选会附加到每次搜索；搜索词与筛选合计最多 128 个字符。')}
+              </p>
               <div className="settings-grid">
                 {(
                   [
-                    ['site', '限定站点', '多个域名用空格分隔'],
-                    ['excludeSite', '排除站点', '多个域名用空格分隔'],
-                    ['language', '语言代码', '例如 zh,en'],
-                    ['exactPhrase', '精确短语', ''],
-                    ['excludeTerms', '排除关键词', '用空格分隔'],
+                    ['site', t('限定站点'), t('多个域名用空格分隔')],
+                    ['excludeSite', t('排除站点'), t('多个域名用空格分隔')],
+                    ['language', t('语言代码'), t('例如 zh,en')],
+                    ['exactPhrase', t('精确短语'), ''],
+                    ['excludeTerms', t('排除关键词'), t('用空格分隔')],
                   ] as const
                 ).map(([field, label, placeholder]) => (
                   <label key={field} className="field-label">
@@ -521,8 +646,8 @@ function SettingsModal({
                 ))}
                 {(
                   [
-                    ['after', '发布于此日期之后'],
-                    ['before', '发布于此日期之前'],
+                    ['after', t('发布于此日期之后')],
+                    ['before', t('发布于此日期之前')],
                   ] as const
                 ).map(([field, label]) => (
                   <label key={field} className="field-label">
@@ -536,67 +661,140 @@ function SettingsModal({
                 ))}
               </div>
               <label className="field-label">
-                本地化 IPv4（可选）
+                {t('本地化 IPv4（可选）')}
                 <input
                   value={draft.localization}
-                  placeholder="留空不发送"
+                  placeholder={t('留空不发送')}
                   onChange={(e) => patch({ localization: e.target.value })}
                 />
               </label>
               <p className="field-help">
-                填写后此地址会随搜索发送给 DeepSeek。仅在需要本地化结果时输入。
+                {t('填写后此地址会随搜索发送给 DeepSeek。仅在需要本地化结果时输入。')}
               </p>
               <Toggle
-                label="获取网页正文"
-                description="请求正文可能增加响应体积；正文仅在当前页面显示，不写入缓存。"
+                label={t('获取网页正文')}
+                description={t('请求正文可能增加响应体积；正文仅在当前页面显示，不写入缓存。')}
                 checked={draft.needContent}
                 onChange={(needContent) => patch({ needContent })}
               />
               <Toggle
-                label="显示长摘要"
-                description="显示 DeepSeek 返回的长摘要。"
+                label={t('显示长摘要')}
+                description={t('显示 DeepSeek 返回的长摘要。')}
                 checked={draft.showSummary}
                 onChange={(showSummary) => patch({ showSummary })}
               />
               <Toggle
-                label="显示评分"
-                description="显示 DeepSeek 的排序分数和权威性评级；这些不是事实核验。"
+                label={t('显示评分')}
+                description={t('显示 DeepSeek 的排序分数和权威性评级；这些不是事实核验。')}
                 checked={draft.showScores}
                 onChange={(showScores) => patch({ showScores })}
               />
             </details>
             <Toggle
-              label="在新标签页打开链接"
-              description="保留当前搜索结果，继续探索。"
+              label={t('在新标签页打开链接')}
+              description={t('保留当前搜索结果，继续探索。')}
               checked={draft.openNewTab}
               onChange={(openNewTab) => patch({ openNewTab })}
             />
           </section>
           <section className="settings-section">
             <div className="section-label">
-              <ShieldCheck size={17} />
-              <h3>本地数据</h3>
+              <Sparkles size={17} />
+              <h3>{t('AI 回答')}</h3>
             </div>
             <Toggle
-              label="记住搜索历史"
-              description="保存最近 50 条成功搜索，关闭会清除历史。"
+              label={t('启用 AI 回答')}
+              description={t('仅在你点击 AI 时调用模型；输入和打开页面不会调用。')}
+              checked={draft.aiEnabled}
+              onChange={(aiEnabled) => patch({ aiEnabled })}
+            />
+            <div className="settings-grid">
+              <label className="field-label">
+                {t('模型')}
+                <select
+                  value={draft.aiModel}
+                  onChange={(e) => patch({ aiModel: e.target.value as Settings['aiModel'] })}
+                >
+                  {AI_MODELS.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-label">
+                {t('使用的搜索结果数')}
+                <select
+                  value={draft.aiSources}
+                  onChange={(e) => patch({ aiSources: Number(e.target.value) })}
+                >
+                  {Array.from({ length: 8 }, (_, i) => i + 3).map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-label">
+                {t('回答长度上限')}
+                <select
+                  value={draft.aiMaxTokens}
+                  onChange={(e) => patch({ aiMaxTokens: Number(e.target.value) })}
+                >
+                  {AI_TOKEN_CHOICES.map((n) => (
+                    <option key={n} value={n}>
+                      {n} tokens
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-label">
+                {t('每日 AI 请求上限（0 为不限）')}
+                <input
+                  type="number"
+                  min={0}
+                  max={1000}
+                  value={draft.aiDailyCap}
+                  onChange={(e) =>
+                    patch({
+                      aiDailyCap: Math.min(
+                        1000,
+                        Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                      ),
+                    })
+                  }
+                />
+              </label>
+            </div>
+            <p className="field-help">
+              {t('这是本机的预算限制，不是 DeepSeek 的官方额度。AI 回答可能产生 API 费用。')}
+            </p>
+          </section>
+          <section className="settings-section">
+            <div className="section-label">
+              <ShieldCheck size={17} />
+              <h3>{t('本地数据')}</h3>
+            </div>
+            <Toggle
+              label={t('记住搜索历史')}
+              description={t('保存最近 50 条成功搜索，关闭会清除历史。')}
               checked={draft.historyEnabled}
               onChange={(historyEnabled) => patch({ historyEnabled })}
             />
             <Toggle
-              label="缓存搜索结果"
-              description="15 分钟内复用相同搜索，最多保存 20 组。关闭会清除缓存。"
+              label={t('缓存搜索结果')}
+              description={t('15 分钟内复用相同搜索，最多保存 20 组。关闭会清除缓存。')}
               checked={draft.cacheEnabled}
               onChange={(cacheEnabled) => patch({ cacheEnabled })}
             />
             <div className="data-actions">
               <button className="text-button" type="button" onClick={() => clear('history')}>
                 <Trash2 size={14} />
-                清除历史（{state.history.length}）
+                {t('清除历史（{n}）', { n: state.history.length })}
               </button>
               <button className="text-button" type="button" onClick={() => clear('cache')}>
                 <Trash2 size={14} />
-                清除缓存（{state.cache.length}）
+                {t('清除缓存（{n}）', { n: state.cache.length })}
               </button>
             </div>
             {dataFeedback && (
@@ -605,20 +803,22 @@ function SettingsModal({
               </p>
             )}
             <p className="privacy-note">
-              搜索词仅在你提交时直发 DeepSeek。无后端、无统计追踪、不读取 Chrome 浏览历史。
+              {t(
+                '搜索词仅在你选择「搜索网页」时直发 DeepSeek。标签页、书签和浏览历史只在本机匹配，不上传、不保存副本；无后端、无统计追踪。',
+              )}
               <a
                 href="https://api-docs.deepseek.com/zh-cn/guides/search/"
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                接口说明 <ArrowUpRight size={12} />
+                {t('接口说明')} <ArrowUpRight size={12} />
               </a>
             </p>
           </section>
           <section className="settings-section" aria-labelledby="shortcuts-title">
             <div className="section-label">
               <Link2 size={17} />
-              <h3 id="shortcuts-title">快捷链接</h3>
+              <h3 id="shortcuts-title">{t('快捷链接')}</h3>
             </div>
             <div className="saved-links">
               {state.links.map((link) => (
@@ -634,7 +834,7 @@ function SettingsModal({
                   <button
                     type="button"
                     className="icon-button"
-                    aria-label={`编辑 ${link.title}`}
+                    aria-label={t('编辑 {title}', { title: link.title })}
                     onClick={() => setLinkEditor({ link })}
                   >
                     <SlidersHorizontal size={18} />
@@ -645,14 +845,15 @@ function SettingsModal({
             {state.links.length < 8 && (
               <button type="button" className="text-button" onClick={() => setLinkEditor({})}>
                 <Plus size={18} />
-                添加快捷链接
+                {t('添加快捷链接')}
               </button>
             )}
           </section>
           <footer className="modal-footer">
             <span className="tiny muted">SeekTab {version}</span>
             <button className="button primary" type="submit" disabled={saving || testing}>
-              {saving ? <LoaderCircle size={16} className="spin" /> : <Check size={16} />}保存设置
+              {saving ? <LoaderCircle size={16} className="spin" /> : <Check size={16} />}
+              {t('保存设置')}
             </button>
           </footer>
         </form>
@@ -662,7 +863,7 @@ function SettingsModal({
           link={linkEditor.link}
           count={state.links.length}
           onClose={() => setLinkEditor(null)}
-          onSaved={() => onSaved('快捷链接已保存')}
+          onSaved={() => onSaved(t('快捷链接已保存'))}
         />
       )}
     </>
@@ -690,11 +891,11 @@ function LinkModal({
       /^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`,
     );
     if (!normalized || !title.trim()) {
-      setError('请填写名称和有效的 HTTP / HTTPS 网址。');
+      setError(t('请填写名称和有效的 HTTP / HTTPS 网址。'));
       return;
     }
     if (!link && count >= 8) {
-      setError('最多添加 8 个快捷链接。');
+      setError(t('最多添加 8 个快捷链接。'));
       return;
     }
     setBusy(true);
@@ -713,27 +914,27 @@ function LinkModal({
       onSaved();
       onClose();
     } catch {
-      setError('保存失败，请重试。');
+      setError(t('保存失败，请重试。'));
     } finally {
       setBusy(false);
     }
   }
   return (
-    <Modal title={link ? '编辑快捷链接' : '添加快捷链接'} onClose={onClose}>
+    <Modal title={link ? t('编辑快捷链接') : t('添加快捷链接')} onClose={onClose}>
       <form onSubmit={submit} className="link-form">
         <label className="field-label">
-          名称
+          {t('名称')}
           <input
             autoFocus
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             maxLength={24}
-            placeholder="例如：我的工作台"
+            placeholder={t('例如：我的工作台')}
             required
           />
         </label>
         <label className="field-label">
-          网址
+          {t('网址')}
           <input
             value={url}
             onChange={(e) => setUrl(e.target.value)}
@@ -762,18 +963,18 @@ function LinkModal({
                   onSaved();
                   onClose();
                 } catch {
-                  setError('删除失败，请重试。');
+                  setError(t('删除失败，请重试。'));
                 }
               }}
             >
               <Trash2 size={15} />
-              删除链接
+              {t('删除链接')}
             </button>
           ) : (
             <span />
           )}
           <button className="button primary" disabled={busy} type="submit">
-            保存链接 <ArrowRight size={16} />
+            {t('保存链接')} <ArrowRight size={16} />
           </button>
         </footer>
       </form>
@@ -792,7 +993,7 @@ function HistoryModal({
   onClear: () => void;
 }) {
   return (
-    <Modal title="搜索历史" onClose={onClose}>
+    <Modal title={t('搜索历史')} onClose={onClose}>
       <div className="history-list">
         {state.history.length ? (
           state.history.map((h) => (
@@ -806,7 +1007,10 @@ function HistoryModal({
               <History size={16} />
               <span>{h.query}</span>
               <time>
-                {new Date(h.at).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
+                {new Date(h.at).toLocaleDateString(dateLocale(), {
+                  month: 'short',
+                  day: 'numeric',
+                })}
               </time>
               <ArrowUpRight size={15} />
             </button>
@@ -814,18 +1018,152 @@ function HistoryModal({
         ) : (
           <div className="empty-small">
             <History size={28} />
-            <p>{state.settings.historyEnabled ? '暂无搜索历史' : '历史记录已关闭。'}</p>
+            <p>{state.settings.historyEnabled ? t('暂无搜索历史') : t('历史记录已关闭。')}</p>
           </div>
         )}
       </div>
       <footer className="modal-footer">
-        <span className="tiny muted">最多保留 50 条</span>
+        <span className="tiny muted">{t('最多保留 50 条')}</span>
         <button className="text-button danger" onClick={onClear} disabled={!state.history.length}>
           <Trash2 size={14} />
-          清除全部历史
+          {t('清除全部历史')}
         </button>
       </footer>
     </Modal>
+  );
+}
+
+type Scope = 'all' | 'web' | 'ai' | SourceId;
+interface AiView {
+  status: 'running' | 'done' | 'error';
+  question: string;
+  text: string;
+  sources: AiSource[];
+  answer?: AiAnswer;
+  error?: SearchError;
+}
+interface PaletteRow {
+  key: string;
+  title: string;
+  url: string;
+  hint: string;
+  run: () => void;
+}
+interface PaletteGroup {
+  id: string;
+  label: string;
+  rows: PaletteRow[];
+}
+const NO_ITEMS: Record<SourceId, BrowserItem[]> = { tabs: [], bookmarks: [], history: [] };
+const dateLocale = () => (getLocale() === 'en' ? 'en-GB' : 'zh-CN');
+const scopeLabel = (id: Scope) =>
+  ({
+    all: t('全部'),
+    tabs: t('标签页'),
+    bookmarks: t('书签'),
+    history: t('历史'),
+    web: t('网页'),
+    ai: 'AI',
+  })[id];
+const sourceHint = (id: SourceId) => (id === 'tabs' ? t('切换到标签页') : t('打开'));
+const accentLabel = (a: Settings['accent']) =>
+  ({ amber: t('琥珀'), sky: t('天蓝'), mint: t('薄荷'), coral: t('珊瑚') })[a];
+
+function AiPanel({
+  ai,
+  linkProps,
+  onStop,
+  onRetry,
+}: {
+  ai: AiView;
+  linkProps: { target: string; rel: string };
+  onStop: () => void;
+  onRetry: () => void;
+}) {
+  const running = ai.status === 'running';
+  const usage = ai.answer?.usage;
+  return (
+    <section className="ai-panel" aria-label={t('AI 回答')} aria-busy={running}>
+      <div className="ai-head">
+        <h2>
+          <Sparkles size={16} />
+          {t('AI 回答')}
+        </h2>
+        <span aria-live="polite">{running ? t('生成中…') : ai.answer?.model}</span>
+        {running ? (
+          <button className="text-button" type="button" onClick={onStop}>
+            {t('停止生成')}
+          </button>
+        ) : (
+          <button className="text-button" type="button" onClick={onRetry}>
+            {t('重新生成')}
+          </button>
+        )}
+      </div>
+      {ai.text ? (
+        <div className="ai-text">
+          {ai.text.split(/\n{2,}/).map((paragraph, i) => (
+            <p key={i}>
+              {splitCitations(paragraph, ai.sources.length).map((part, j) =>
+                'cite' in part ? (
+                  <a
+                    key={j}
+                    className="cite"
+                    href={safeUrl(ai.sources[part.cite - 1].url) || undefined}
+                    title={ai.sources[part.cite - 1].title}
+                    {...linkProps}
+                  >
+                    {part.cite}
+                  </a>
+                ) : (
+                  <span key={j}>{part.text}</span>
+                ),
+              )}
+            </p>
+          ))}
+        </div>
+      ) : (
+        running && (
+          <p className="tiny muted">
+            <LoaderCircle size={14} className="spin" />{' '}
+            {t('正在阅读 {n} 个搜索结果…', { n: ai.sources.length })}
+          </p>
+        )
+      )}
+      {ai.status === 'error' && ai.error && (
+        <p className="feedback error" role="alert">
+          {ai.error.message}
+        </p>
+      )}
+      {ai.answer?.truncated && <p className="tiny muted">{t('回答因长度上限被截断。')}</p>}
+      <p className="tiny muted">
+        {t('AI 生成，可能有误，请核对来源。')}
+        {ai.status === 'done' && ` · ${t('基于 {n} 个搜索结果', { n: ai.sources.length })}`}
+        {usage &&
+          ` · ${t('输入 {i} / 输出 {o} tokens', { i: usage.inputTokens, o: usage.outputTokens })}`}
+      </p>
+    </section>
+  );
+}
+
+const FAVICON =
+  typeof chrome !== 'undefined' && chrome.runtime?.getURL
+    ? chrome.runtime.getURL('/_favicon/')
+    : '';
+function LinkIcon({ url, title }: { url: string; title: string }) {
+  const [failed, setFailed] = useState(false);
+  const letter = ([...title.trim()][0] ?? '?').toUpperCase();
+  let hue = 0;
+  for (const c of title) hue = (hue * 31 + c.charCodeAt(0)) % 360;
+  // Chrome serves this from its local favicon cache; no network request is made.
+  const src = FAVICON ? `${FAVICON}?pageUrl=${encodeURIComponent(url)}&size=32` : '';
+  return (
+    <span className="link-icon" style={{ background: `hsl(${hue} 45% 38%)` }} aria-hidden="true">
+      {letter}
+      {src && !failed && (
+        <img src={src} alt="" width={20} height={20} onError={() => setFailed(true)} />
+      )}
+    </span>
   );
 }
 
@@ -853,7 +1191,8 @@ export default function App() {
         if (active) setState(s);
       })
       .catch((e) => {
-        if (active) setFatal(e instanceof Error ? e.message : '无法读取本地设置，请重新加载扩展。');
+        if (active)
+          setFatal(e instanceof Error ? e.message : t('无法读取本地设置，请重新加载扩展。'));
       });
     const changed = () => {
       readState()
@@ -880,14 +1219,18 @@ export default function App() {
     mq.addEventListener('change', change);
     return () => mq.removeEventListener('change', change);
   }, []);
+  setLocale(state?.settings.locale ?? normalizeLocale(undefined, navigator.language));
   const dark =
     state?.settings.theme === 'dark' || (state?.settings.theme !== 'light' && systemDark);
   useEffect(() => {
     if (state) {
       document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      document.documentElement.dataset.accent = state.settings.accent;
+      document.documentElement.lang = state.settings.locale === 'en' ? 'en' : 'zh-CN';
+      localStorage.setItem('seektab-accent', state.settings.accent);
       localStorage.setItem('seektab-theme', state.settings.theme);
     }
-  }, [state?.settings.theme, dark]);
+  }, [state?.settings.theme, state?.settings.accent, state?.settings.locale, dark]);
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (modal) return;
@@ -909,10 +1252,82 @@ export default function App() {
   }, [toast]);
   useEffect(() => () => abortRef.current?.abort(), []);
   useEffect(() => {
-    document.title = searchedQuery ? `${searchedQuery} · SeekTab` : 'SeekTab · 搜索';
+    document.title = searchedQuery ? `${searchedQuery} · SeekTab` : t('SeekTab · 搜索');
   }, [searchedQuery]);
   const cooldown = Math.max(0, Math.ceil(((state?.cooldownUntil || 0) - now) / 1000));
-  async function search(value: string, refresh = false) {
+  const [scope, setScope] = useState<Scope>('all');
+  const [active, setActive] = useState(0);
+  const [found, setFound] = useState(NO_ITEMS);
+  const [addingLink, setAddingLink] = useState(false);
+  const [ai, setAi] = useState<AiView | null>(null);
+  const [aiNotice, setAiNotice] = useState<{ q: string; results: SearchResult[] } | null>(null);
+  const aiAbort = useRef<AbortController | null>(null);
+  const aiId = useRef(0);
+  const trimmed = query.trim();
+  const sources = state ? enabledSources(state.settings) : [];
+  const sourceKey = sources.join();
+  const aiOn = !!state?.settings.aiEnabled;
+  const scopeNow: Scope =
+    scope === 'all' || scope === 'web' || (scope === 'ai' ? aiOn : sources.includes(scope))
+      ? scope
+      : 'all';
+  const scopes: Scope[] = ['all', ...sources, 'web', ...(aiOn ? (['ai'] as const) : [])];
+  const paletteOpen = !!trimmed && trimmed !== searchedQuery;
+  useEffect(() => {
+    if (!trimmed || !globalThis.chrome?.tabs) {
+      setFound(NO_ITEMS);
+      return;
+    }
+    let live = true;
+    const timer = setTimeout(() => {
+      const wanted = scopeNow === 'all' ? sources : sources.filter((id) => id === scopeNow);
+      searchBrowser(trimmed, wanted).then((items) => {
+        if (live) setFound(items);
+      });
+    }, 120);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [trimmed, scopeNow, sourceKey]);
+  useEffect(() => setActive(0), [trimmed, scopeNow]);
+  function stopAi() {
+    aiId.current++;
+    aiAbort.current?.abort();
+  }
+  async function startAi(q: string, results: SearchResult[], acknowledged = false) {
+    if (!state) return;
+    if (!state.settings.aiAcknowledged && !acknowledged) {
+      setAiNotice({ q, results });
+      return;
+    }
+    aiAbort.current?.abort();
+    const id = ++aiId.current;
+    const controller = new AbortController();
+    aiAbort.current = controller;
+    const sources = buildSources(results, state.settings.aiSources);
+    setAi({ status: 'running', question: q, text: '', sources });
+    try {
+      const answer = await askAi(q, results, controller.signal, (text) => {
+        if (id === aiId.current) setAi((a) => a && { ...a, text });
+      });
+      if (id === aiId.current)
+        setAi({ status: 'done', question: q, text: answer.text, sources: answer.sources, answer });
+    } catch (e) {
+      if (id === aiId.current)
+        setAi((a) => ({
+          status: 'error',
+          question: q,
+          text: a?.text ?? '',
+          sources,
+          error:
+            e instanceof SearchError
+              ? e
+              : new SearchError('storage', t('本地存储暂时不可用，请重新加载扩展后重试。')),
+        }));
+    }
+  }
+  async function search(value: string, refresh = false, withAi = false) {
     let q: string;
     try {
       q = validateQuery(value);
@@ -922,6 +1337,8 @@ export default function App() {
       return;
     }
     abortRef.current?.abort();
+    stopAi();
+    setAi(null);
     const id = ++requestId.current;
     const controller = new AbortController();
     abortRef.current = controller;
@@ -932,7 +1349,10 @@ export default function App() {
     setBusy(true);
     try {
       const result = await runSearch(q, controller.signal, refresh);
-      if (id === requestId.current && !controller.signal.aborted) setResponse(result);
+      if (id === requestId.current && !controller.signal.aborted) {
+        setResponse(result);
+        if (withAi && result.results.length) void startAi(q, result.results);
+      }
     } catch (e) {
       if (id === requestId.current)
         setError(
@@ -941,8 +1361,8 @@ export default function App() {
             : new SearchError(
                 controller.signal.aborted ? 'cancelled' : 'storage',
                 controller.signal.aborted
-                  ? '搜索已取消。'
-                  : '本地存储暂时不可用，请重新加载扩展后重试。',
+                  ? t('搜索已取消。')
+                  : t('本地存储暂时不可用，请重新加载扩展后重试。'),
               ),
         );
     } finally {
@@ -950,6 +1370,8 @@ export default function App() {
     }
   }
   function home() {
+    stopAi();
+    setAi(null);
     abortRef.current?.abort();
     requestId.current++;
     setBusy(false);
@@ -970,17 +1392,104 @@ export default function App() {
       setToast('清除失败，请重试');
     }
   }
+  function openUrl(url: string) {
+    if (!safeUrl(url)) return;
+    if (state?.settings.openNewTab) window.open(url, '_blank', 'noopener,noreferrer');
+    else location.assign(url);
+  }
+  const groups: PaletteGroup[] = [];
+  if (paletteOpen) {
+    if (scopeNow === 'all' || scopeNow === 'web')
+      groups.push({
+        id: 'web',
+        label: t('网页'),
+        rows: [
+          {
+            key: 'web',
+            title: t('搜索网页「{query}」', { query: trimmed }),
+            url: 'DeepSeek Search',
+            hint: t('搜索'),
+            run: () => void search(trimmed),
+          },
+        ],
+      });
+    if (aiOn && (scopeNow === 'all' || scopeNow === 'ai'))
+      groups.push({
+        id: 'ai',
+        label: 'AI',
+        rows: [
+          {
+            key: 'ai',
+            title: t('向 AI 提问「{query}」', { query: trimmed }),
+            url: t('搜索并生成带引用的回答'),
+            hint: t('提问'),
+            run: () => void search(trimmed, false, true),
+          },
+        ],
+      });
+    for (const id of sources) {
+      if (scopeNow !== 'all' && scopeNow !== id) continue;
+      const rows: PaletteRow[] = found[id].map((item) => ({
+        key: item.id,
+        title: item.title,
+        url: display(item.url),
+        hint: sourceHint(id),
+        run: () => (id === 'tabs' ? void activateTab(item) : openUrl(item.url)),
+      }));
+      if (id === 'history' && state?.settings.historyEnabled)
+        for (const h of state.history
+          .filter((entry) => matches({ title: entry.query, url: '' }, trimmed))
+          .slice(0, 2))
+          rows.push({
+            key: `saved-${h.query}`,
+            title: h.query,
+            url: t('SeekTab 搜索记录'),
+            hint: t('再次搜索'),
+            run: () => void search(h.query),
+          });
+      if (rows.length) groups.push({ id, label: scopeLabel(id), rows });
+    }
+  }
+  const flat = groups.flatMap((g) => g.rows);
+  const cur = Math.min(active, Math.max(flat.length - 1, 0));
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const digit = /^Digit([1-9])$/.exec(e.code)?.[1];
+      if (!e.altKey || !digit || modal || !state) return;
+      const link = state.links[Number(digit) - 1];
+      if (!link) return;
+      e.preventDefault();
+      openUrl(link.url);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  });
+  function onPromptKey(e: ReactKeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Escape') {
+      setQuery(paletteOpen || !searchedQuery ? '' : searchedQuery);
+      return;
+    }
+    if (e.key === 'Tab' && !e.shiftKey && trimmed) {
+      e.preventDefault();
+      setScope(scopes[(scopes.indexOf(scopeNow) + 1) % scopes.length]);
+      return;
+    }
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && flat.length) {
+      e.preventDefault();
+      setActive((cur + (e.key === 'ArrowDown' ? 1 : -1) + flat.length) % flat.length);
+    }
+  }
   if (fatal)
     return (
       <main className="fatal">
         <Mark />
-        <h1>在 Chrome 中打开 SeekTab</h1>
+        <h1>{t('在 Chrome 中打开 SeekTab')}</h1>
         <p>{fatal}</p>
       </main>
     );
   if (!state)
     return (
-      <main className="boot" aria-label="正在加载 SeekTab">
+      <main className="boot" aria-label={t('正在加载 SeekTab')}>
         <Mark />
         <LoaderCircle className="spin" size={20} />
       </main>
@@ -990,148 +1499,233 @@ export default function App() {
     rel: 'noopener noreferrer',
   };
   const searching = !!searchedQuery;
+  const clock = new Date(now);
+  const hour12 = state.settings.clock12;
+  const time = clock.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12,
+  });
+  const [clockText, meridiem = ''] = hour12 ? time.split(' ') : [time];
+  const resultsVisible = searching && !paletteOpen;
+  let rowIndex = 0;
   return (
-    <div className={`app ${searching ? 'has-results' : ''}`}>
-      <header className="topbar">
-        <button className="brand" onClick={home} aria-label="SeekTab 首页">
-          SeekTab
+    <div className={`app command ${searching ? 'has-results' : ''}`}>
+      <main className="command-main">
+        <button className="brand" onClick={home} aria-label={t('SeekTab 首页')}>
+          seektab
         </button>
-        <nav className="top-actions" aria-label="页面工具">
-          <button
-            className="icon-button"
-            aria-label="API 用量与余额"
-            title="API 用量与余额"
-            onClick={() => setModal('billing')}
-          >
-            <BarChart3 size={19} />
-          </button>
-          <button
-            className="icon-button"
-            aria-label="搜索历史"
-            title="搜索历史"
-            onClick={() => setModal('history')}
-          >
-            <History size={19} />
-          </button>
-          <button
-            className="icon-button"
-            aria-label="打开设置"
-            title="设置"
-            onClick={() => setModal('settings')}
-          >
-            <Settings2 size={19} />
-          </button>
-        </nav>
-      </header>
-      <main className={searching ? 'main results-main' : 'main home-main'}>
-        {searching && (
-          <button className="back-button" onClick={home}>
-            <ArrowLeft size={15} />
-            返回
-          </button>
-        )}
-        <section className="search-area" aria-label="网页搜索">
-          <form
-            className="search-box"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void search(query);
-            }}
-          >
-            <div className="search-input-row">
-              <Search size={23} className="search-glyph" />
-              <input
-                ref={searchInput}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                autoComplete="off"
-                spellCheck={false}
-                placeholder="搜索网页"
-                aria-label="搜索网页"
-                maxLength={256}
-              />
-              {query && !busy && (
-                <button
-                  type="button"
-                  className="icon-button clear-query"
-                  aria-label="清空搜索词"
-                  onClick={() => {
-                    setQuery('');
-                    searchInput.current?.focus();
-                  }}
-                >
-                  <X size={17} />
-                </button>
-              )}
-              {busy ? (
-                <button
-                  type="button"
-                  className="search-submit stop"
-                  aria-label="停止"
-                  onClick={() => abortRef.current?.abort()}
-                >
-                  <X size={17} />
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  className="search-submit"
-                  disabled={!query.trim()}
-                  aria-label="提交搜索"
-                >
-                  <ArrowRight size={19} />
-                </button>
-              )}
-            </div>
-          </form>
-          {!state.apiKey && (
-            <button className="setup-prompt" onClick={() => setModal('settings')}>
-              添加 API Key
+        <form
+          className="prompt"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!trimmed) return;
+            if (paletteOpen) flat[cur]?.run();
+            else void search(query);
+          }}
+        >
+          <span className="prompt-glyph" aria-hidden="true">
+            &gt;
+          </span>
+          <input
+            ref={searchInput}
+            role="combobox"
+            aria-expanded={paletteOpen}
+            aria-controls="palette"
+            aria-activedescendant={paletteOpen && flat.length ? `row-${cur}` : undefined}
+            aria-label={t('搜索网页、标签页、书签和历史')}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onPromptKey}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={t('搜索一切')}
+            maxLength={256}
+          />
+          {busy && (
+            <button
+              type="button"
+              className="stop-button"
+              aria-label={t('停止')}
+              onClick={() => abortRef.current?.abort()}
+            >
+              <X size={18} />
             </button>
           )}
-          {!searching && error && (
-            <p className="feedback error" role="alert">
-              {error.message}
-            </p>
+          {(query || searching) && !busy && (
+            <button
+              type="button"
+              className="reset-button"
+              aria-label={t('重置搜索')}
+              title={t('清除当前搜索、结果和 AI 回答')}
+              onClick={() => {
+                home();
+                searchInput.current?.focus();
+              }}
+            >
+              <RotateCcw size={16} />
+              <span>{t('重置')}</span>
+            </button>
           )}
-        </section>
-        {searching && (
+        </form>
+        <div className="scopes" role="group" aria-label={t('搜索范围')}>
+          {scopes.map((id) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={id === scopeNow}
+              onClick={() => {
+                setScope(id);
+                searchInput.current?.focus();
+              }}
+            >
+              {scopeLabel(id)}
+            </button>
+          ))}
+        </div>
+        {!state.apiKey && (
+          <button className="setup-prompt" onClick={() => setModal('settings')}>
+            {t('添加 API Key')}
+          </button>
+        )}
+        {!searching && error && (
+          <p className="feedback error" role="alert">
+            {error.message}
+          </p>
+        )}
+        <div
+          id="palette"
+          role="listbox"
+          aria-label={t('搜索建议')}
+          className="palette"
+          hidden={!flat.length}
+        >
+          {groups.map((g) => (
+            <div key={g.id} role="group" aria-label={g.label} className="palette-group">
+              <div className="palette-label">{g.label}</div>
+              {g.rows.map((row) => {
+                const idx = rowIndex++;
+                return (
+                  <div
+                    key={row.key}
+                    id={`row-${idx}`}
+                    role="option"
+                    aria-selected={idx === cur}
+                    className="palette-row"
+                    onMouseEnter={() => setActive(idx)}
+                    onClick={row.run}
+                  >
+                    <span className="row-title">{row.title}</span>
+                    <span className="row-url">{row.url}</span>
+                    <span className="row-hint">{idx === cur ? row.hint : ''}</span>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        {paletteOpen && !flat.length && (
+          <div className="palette-empty">
+            <p>
+              {t('「{query}」在{scope}中没有结果', {
+                query: trimmed,
+                scope: scopeLabel(scopeNow),
+              })}
+            </p>
+            <div>
+              <button className="button primary" type="button" onClick={() => setScope('web')}>
+                {t('搜索网页')}
+              </button>
+              <button className="button secondary" type="button" onClick={() => setScope('all')}>
+                {t('搜索全部')}
+              </button>
+            </div>
+          </div>
+        )}
+        {!searching && !paletteOpen && (
+          <div className="key-hints" aria-hidden="true">
+            <span>{t('↑↓ 移动')}</span>
+            <span>{t('⏎ 打开')}</span>
+            <span>{t('tab 切换范围')}</span>
+            <span>{t('esc 清除')}</span>
+          </div>
+        )}
+        {resultsVisible && (
           <div className="results-layout">
-            <section className="results-column" aria-label="搜索结果" aria-busy={busy}>
+            <section className="results-column" aria-label={t('搜索结果')} aria-busy={busy}>
               <div className="results-heading">
                 <h1>
                   <Globe2 size={16} />
-                  网页结果
+                  {t('网页结果')}
                 </h1>
                 <span aria-live="polite">
                   {busy
-                    ? '搜索中…'
+                    ? t('搜索中…')
                     : response
-                      ? `${response.results.length} 条结果${response.fromCache ? ' · 本地缓存' : ''}`
+                      ? `${t('{n} 条结果', { n: response.results.length })}${response.fromCache ? t(' · 本地缓存') : ''}`
                       : 'DeepSeek Search'}
                 </span>
+                {aiOn && response && response.results.length > 0 && !ai && (
+                  <button
+                    className="text-button"
+                    type="button"
+                    onClick={() => void startAi(searchedQuery, response.results)}
+                    title={t('用搜索结果生成带引用的 AI 回答')}
+                  >
+                    <Sparkles size={14} />
+                    {t('AI 总结')}
+                  </button>
+                )}
                 {response && (
                   <button
                     className="text-button"
                     disabled={cooldown > 0}
                     onClick={() => void search(searchedQuery, true)}
-                    title="忽略缓存，重新请求搜索"
+                    title={t('忽略缓存，重新请求搜索')}
                   >
-                    刷新结果
+                    {t('刷新结果')}
                   </button>
                 )}
               </div>
+              {response && response.results.length > 1 && (
+                <div className="scopes sort-bar" role="group" aria-label={t('排序')}>
+                  {(['relevance', 'date'] as const).map((by) => (
+                    <button
+                      key={by}
+                      type="button"
+                      aria-pressed={state.settings.sortBy === by}
+                      onClick={() =>
+                        void setPreference({ sortBy: by }).catch(() =>
+                          setToast(t('保存失败，请重试。')),
+                        )
+                      }
+                    >
+                      {by === 'relevance' ? t('按相关度') : t('按日期')}
+                    </button>
+                  ))}
+                </div>
+              )}
               {cooldown > 0 && (
                 <div className="rate-notice" role="status">
                   <Clock3 size={16} />
-                  <span>服务限流，请在 {cooldown} 秒后重试。缓存结果仍可使用。</span>
+                  <span>
+                    {t('服务限流，请在 {n} 秒后重试。缓存结果仍可使用。', { n: cooldown })}
+                  </span>
                 </div>
+              )}
+              {ai && response && (
+                <AiPanel
+                  ai={ai}
+                  linkProps={linkProps}
+                  onStop={stopAi}
+                  onRetry={() => void startAi(searchedQuery, response.results)}
+                />
               )}
               {busy && (
                 <div className="loading-results" role="status">
                   <p>
                     <LoaderCircle size={16} className="spin" />
-                    正在搜索「{searchedQuery}」
+                    {t('正在搜索「{query}」', { query: searchedQuery })}
                   </p>
                   {[1, 2, 3].map((n) => (
                     <div className="skeleton" key={n}>
@@ -1149,16 +1743,16 @@ export default function App() {
                   </span>
                   <h2>
                     {error.code === 'rate'
-                      ? '请稍后重试'
+                      ? t('请稍后重试')
                       : error.code === 'cancelled'
-                        ? '搜索已取消'
-                        : '搜索失败'}
+                        ? t('搜索已取消')
+                        : t('搜索失败')}
                   </h2>
                   <p>{error.message}</p>
                   <div>
                     {error.code === 'key' ? (
                       <button className="button primary" onClick={() => setModal('settings')}>
-                        打开设置 <ArrowRight size={16} />
+                        {t('打开设置')} <ArrowRight size={16} />
                       </button>
                     ) : error.code === 'balance' ? (
                       <a
@@ -1167,7 +1761,7 @@ export default function App() {
                         target="_blank"
                         rel="noopener noreferrer"
                       >
-                        前往 DeepSeek 平台 <ArrowUpRight size={16} />
+                        {t('前往 DeepSeek 平台')} <ArrowUpRight size={16} />
                       </a>
                     ) : (
                       <button
@@ -1175,7 +1769,7 @@ export default function App() {
                         disabled={cooldown > 0}
                         onClick={() => void search(searchedQuery, true)}
                       >
-                        {cooldown > 0 ? `${cooldown} 秒后重试` : '重试'}
+                        {cooldown > 0 ? t('{n} 秒后重试', { n: cooldown }) : t('重试')}
                       </button>
                     )}
                   </div>
@@ -1185,7 +1779,7 @@ export default function App() {
                 <>
                   {response.persistenceWarning && (
                     <p className="feedback error" role="status">
-                      结果已获取，但本地存储失败，历史和缓存可能未保存。
+                      {t('结果已获取，但本地存储失败，历史和缓存可能未保存。')}
                     </p>
                   )}
                   {!response.results.length ? (
@@ -1193,12 +1787,12 @@ export default function App() {
                       <span className="message-icon">
                         <Search size={26} />
                       </span>
-                      <h2>无结果</h2>
-                      <p>没有找到匹配的网页。试试更简短的关键词，或减少搜索条件。</p>
+                      <h2>{t('无结果')}</h2>
+                      <p>{t('没有找到匹配的网页。试试更简短的关键词，或减少搜索条件。')}</p>
                     </div>
                   ) : (
                     <ol className="results-list">
-                      {response.results.map((r) => (
+                      {sortResults(response.results, state.settings.sortBy).map((r) => (
                         <li key={r.url} className="result-card">
                           <div className="result-top">
                             <span className="result-site-icon">
@@ -1220,34 +1814,34 @@ export default function App() {
                           {r.snippet && <p className="result-snippet">{r.snippet}</p>}
                           {state.settings.needContent && r.content && (
                             <details>
-                              <summary>网页正文（最多显示 12,000 字符）</summary>
+                              <summary>{t('网页正文（最多显示 12,000 字符）')}</summary>
                               <p className="result-snippet">{r.content}</p>
                             </details>
                           )}
                           {state.settings.showSummary && r.summary && (
                             <details>
-                              <summary>长摘要</summary>
+                              <summary>{t('长摘要')}</summary>
                               <p className="result-snippet">{r.summary}</p>
                             </details>
                           )}
                           {state.settings.showScores &&
                             (r.score != null || (r.authority != null && r.authority >= 0)) && (
                               <p className="result-snippet">
-                                {r.score != null && `排序 ${r.score}/3`}
+                                {r.score != null && t('排序 {n}/3', { n: r.score })}
                                 {r.score != null &&
                                   r.authority != null &&
                                   r.authority >= 0 &&
                                   ' · '}
                                 {r.authority != null &&
                                   r.authority >= 0 &&
-                                  `权威性 ${r.authority}/4`}
+                                  t('权威性 {n}/4', { n: r.authority })}
                               </p>
                             )}
                           <div className="result-meta">
                             {r.date && (
                               <time dateTime={r.date}>
                                 <Clock3 size={12} />
-                                {new Date(r.date).toLocaleDateString('zh-CN', {
+                                {new Date(r.date).toLocaleDateString(dateLocale(), {
                                   year: 'numeric',
                                   month: 'short',
                                   day: 'numeric',
@@ -1265,6 +1859,120 @@ export default function App() {
           </div>
         )}
       </main>
+      <aside className="rail" aria-label={t('工具栏')}>
+        <div className="rail-head">
+          <div>
+            <div className="clock">
+              <time dateTime={clock.toISOString()}>{clockText}</time>
+              {meridiem && <span>{meridiem.toLowerCase()}</span>}
+            </div>
+            <div className="date">
+              {clock.toLocaleDateString(dateLocale(), {
+                weekday: 'long',
+                month: 'long',
+                day: 'numeric',
+              })}
+            </div>
+          </div>
+          <nav className="top-actions" aria-label={t('页面工具')}>
+            <button
+              className="icon-button"
+              aria-label={dark ? t('切换到浅色模式') : t('切换到深色模式')}
+              title={dark ? t('切换到浅色模式') : t('切换到深色模式')}
+              onClick={() =>
+                void setPreference({ theme: dark ? 'light' : 'dark' }).catch(() =>
+                  setToast(t('保存失败，请重试。')),
+                )
+              }
+            >
+              {dark ? <Sun size={19} /> : <Moon size={19} />}
+            </button>
+            <button
+              className="icon-button"
+              aria-label={t('切换语言')}
+              title="中文 / English"
+              onClick={() =>
+                void setPreference({ locale: state.settings.locale === 'en' ? 'zh' : 'en' }).catch(
+                  () => setToast(t('保存失败，请重试。')),
+                )
+              }
+            >
+              <Languages size={19} />
+            </button>
+            <button
+              className="icon-button"
+              aria-label={t('API 用量与余额')}
+              title={t('API 用量与余额')}
+              onClick={() => setModal('billing')}
+            >
+              <BarChart3 size={19} />
+            </button>
+            <button
+              className="icon-button"
+              aria-label={t('搜索历史')}
+              title={t('搜索历史')}
+              onClick={() => setModal('history')}
+            >
+              <History size={19} />
+            </button>
+            <button
+              className="icon-button"
+              aria-label={t('打开设置')}
+              title={t('设置')}
+              onClick={() => setModal('settings')}
+            >
+              <Settings2 size={19} />
+            </button>
+          </nav>
+        </div>
+        <nav className="rail-links" aria-label={t('快捷链接')}>
+          {state.links.map((link, at) => (
+            <a key={link.id} href={safeUrl(link.url) || undefined} {...linkProps}>
+              <LinkIcon url={link.url} title={link.title} />
+              <span className="link-title">{link.title}</span>
+              <kbd>{at < 9 ? `⌥${at + 1}` : ''}</kbd>
+            </a>
+          ))}
+          {state.links.length < 8 && (
+            <button type="button" onClick={() => setAddingLink(true)}>
+              {t('添加链接')}
+            </button>
+          )}
+        </nav>
+      </aside>
+      {aiNotice && (
+        <Modal title={t('使用 AI 回答')} onClose={() => setAiNotice(null)}>
+          <p className="field-help">
+            {t(
+              '每次 AI 回答会向 DeepSeek 发送一次搜索请求和一次模型请求，两者都可能产生 API 费用。只有你的问题和搜索结果会被发送，不包含标签页、书签或浏览历史。回答仅保留在当前页面。',
+            )}
+          </p>
+          <footer className="modal-footer">
+            <button className="text-button" type="button" onClick={() => setAiNotice(null)}>
+              {t('取消')}
+            </button>
+            <button
+              className="button primary"
+              type="button"
+              onClick={() => {
+                const pending = aiNotice;
+                setAiNotice(null);
+                void setPreference({ aiAcknowledged: true }).catch(() => {});
+                void startAi(pending.q, pending.results, true);
+              }}
+            >
+              {t('继续')}
+            </button>
+          </footer>
+        </Modal>
+      )}
+      {addingLink && (
+        <LinkModal
+          count={state.links.length}
+          onClose={() => setAddingLink(false)}
+          onSaved={() => setToast('快捷链接已保存')}
+        />
+      )}
       {toast && (
         <div className="toast" role="status">
           <CheckCircle2 size={16} />

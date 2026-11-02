@@ -1,3 +1,4 @@
+import { t } from './i18n';
 import { searchWeb, SearchError, validateQuery, compileQuery } from './api';
 import { cacheFor, readState, remember, updateState } from './store';
 import type { SearchResult } from './types';
@@ -18,11 +19,11 @@ async function networkRequest(
 ) {
   const state = await readState();
   if (state.cooldownUntil > Date.now())
-    throw new SearchError('rate', '搜索请求有点频繁，稍等片刻再试。', state.cooldownUntil);
+    throw new SearchError('rate', t('搜索请求有点频繁，稍等片刻再试。'), state.cooldownUntil);
   // A small shared gap protects this installation across concurrent new tabs.
   const wait = Math.max(0, state.lastRequestAt + 300 - Date.now());
   if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
-  if (signal.aborted) throw new SearchError('cancelled', '搜索已取消。');
+  if (signal.aborted) throw new SearchError('cancelled', t('搜索已取消。'));
   await updateState((s) => ({ ...s, lastRequestAt: Date.now() }));
   let started = false;
   let outcome: Outcome = 'failed';
@@ -92,7 +93,7 @@ export async function runSearch(
         originalQuestion: effectiveQuery !== query ? query : undefined,
       },
     );
-    if (signal.aborted) throw new SearchError('cancelled', '搜索已取消。');
+    if (signal.aborted) throw new SearchError('cancelled', t('搜索已取消。'));
     const at = Date.now();
     let persistenceWarning = false;
     try {

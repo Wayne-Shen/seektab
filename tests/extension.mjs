@@ -6,6 +6,8 @@ import os from 'node:os';
 
 // Runs against a real unpacked MV3 extension, with API traffic intercepted.
 // A real key and billable network access are deliberately unnecessary.
+const promptOf = (p) =>
+  p.getByRole('combobox', { name: '搜索网页、标签页、书签和历史', exact: true });
 const extensionPath = path.resolve('dist');
 const extensionId = createHash('sha256')
   .update(extensionPath)
@@ -62,10 +64,21 @@ const fixture = {
     },
   ],
 };
+const aiStream = [
+  { type: 'response.created' },
+  { type: 'response.reasoning_text.delta', delta: 'SECRET-THOUGHT' },
+  { type: 'response.output_text.delta', delta: 'Answer one [S1] and [S2]. Fake [S99].' },
+  { type: 'response.output_text.delta', delta: '\n\nSecond [S3].' },
+  { type: 'response.completed', response: { usage: { input_tokens: 12, output_tokens: 34 } } },
+]
+  .map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`)
+  .join('');
 let mode = 'success';
 let calls = [];
 let foreignRequests = [];
 let balanceCalls = 0;
+let aiCalls = [];
+let aiMode = 'ok';
 let balanceFailure = false;
 try {
   context = await chromium.launchPersistentContext(profile, {
@@ -75,6 +88,7 @@ try {
     viewport: { width: 1440, height: 1000 },
     deviceScaleFactor: 1,
     colorScheme: 'light',
+    locale: 'zh-CN',
     reducedMotion: 'reduce',
     ignoreDefaultArgs: ['--disable-extensions'],
     args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
@@ -99,6 +113,14 @@ try {
           ],
         }),
       });
+    }
+    if (request.url() === 'https://api.deepseek.com/responses') {
+      aiCalls.push({
+        data: request.postDataJSON(),
+        authorization: request.headers().authorization,
+      });
+      if (aiMode === 'delay') await new Promise((r) => setTimeout(r, 1500));
+      return route.fulfill({ status: 200, contentType: 'text/event-stream', body: aiStream });
     }
     calls.push({
       url: request.url(),
@@ -141,15 +163,26 @@ try {
     });
   });
   context.on('request', (req) => {
-    if (/^https?:/.test(req.url()) && !req.url().startsWith('https://api.deepseek.com/'))
+    if (
+      /^https?:/.test(req.url()) &&
+      !req.url().startsWith('https://api.deepseek.com/') &&
+      !new URL(req.url()).hostname.endsWith('.seektab.test')
+    )
       foreignRequests.push(req.url());
   });
+  await context.route('https://*.seektab.test/**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'text/html',
+      body: '<!doctype html><title>Omega Workspace</title><p>fixture</p>',
+    }),
+  );
   context.setDefaultTimeout(15000);
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(`chrome-extension://${extensionId}/index.html`);
-  await expect(page.getByRole('textbox', { name: '搜索网页', exact: true })).toHaveValue('');
+  await expect(promptOf(page)).toHaveValue('');
   await expect(
     page.locator('.hero, .quick-section, .recent-section, .page-footer, .search-aside'),
   ).toHaveCount(0);
@@ -213,14 +246,55 @@ try {
   await page.keyboard.press('Escape');
   await page.locator('body').click({ position: { x: 5, y: 80 } });
   await page.keyboard.press('/');
-  await expect(page.getByRole('textbox', { name: '搜索网页', exact: true })).toBeFocused();
+  await expect(promptOf(page)).toBeFocused();
   record('Settings stay usable at 320px; native modal Escape and search shortcut work');
 
+  await page.evaluate(async () => {
+    await chrome.bookmarks.create({
+      title: 'Command Bookmark Alpha',
+      url: 'https://bookmark.seektab.test/alpha',
+    });
+    await chrome.history.addUrl({ url: 'https://history.seektab.test/zeta' });
+  });
+  const work = await context.newPage();
+  await work.goto('https://tab.seektab.test/omega');
+  await page.bringToFront();
+  await promptOf(page).fill('Alpha');
+  await expect(page.getByRole('option', { name: /Command Bookmark Alpha/ })).toBeVisible();
+  await expect(page.getByRole('option', { name: /搜索网页「Alpha」/ })).toBeVisible();
+  await promptOf(page).fill('zeta');
+  await expect(page.getByRole('option', { name: /history\.seektab\.test\/zeta/ })).toBeVisible();
+  await promptOf(page).fill('Omega');
+  await expect(page.getByRole('option', { name: /Omega Workspace/ }).first()).toBeVisible();
+  await promptOf(page).press('Tab');
+  await expect(page.getByRole('button', { name: '标签页', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.getByRole('option', { name: /搜索网页/ })).toHaveCount(0);
+  await page.screenshot({ path: path.join(artifacts, 'command-palette.png') });
+  await promptOf(page).press('Enter');
+  await expect
+    .poll(() =>
+      page.evaluate(async () => (await chrome.tabs.query({ active: true })).map((t) => t.title)),
+    )
+    .toContain('Omega Workspace');
+  await page.bringToFront();
+  await promptOf(page).fill('');
+  await promptOf(page).fill('nothing-matches-xyz');
+  await page.getByRole('button', { name: '标签页', exact: true }).click();
+  await expect(page.getByText(/在标签页中没有结果/)).toBeVisible();
+  await page.getByRole('button', { name: '搜索全部' }).click();
+  await promptOf(page).fill('');
+  await work.close();
+  expect(calls).toHaveLength(1);
+  record('Command palette finds tabs, bookmarks and Chrome history locally and switches tabs');
+
   const submit = async (q) => {
-    await page.getByRole('textbox', { name: '搜索网页', exact: true }).click();
-    await page.getByRole('textbox', { name: '搜索网页', exact: true }).press('ControlOrMeta+A');
-    await page.getByRole('textbox', { name: '搜索网页', exact: true }).pressSequentially(q);
-    await page.getByRole('button', { name: '提交搜索' }).click();
+    await promptOf(page).click();
+    await promptOf(page).press('ControlOrMeta+A');
+    await promptOf(page).pressSequentially(q);
+    await promptOf(page).press('Enter');
   };
   await submit('寻找下一次发现');
   await expect(page.locator('.result-card')).toHaveCount(3);
@@ -257,7 +331,7 @@ try {
   mode = 'delay';
   const second = await context.newPage();
   await second.goto(`chrome-extension://${extensionId}/index.html`);
-  await expect(second.getByRole('textbox', { name: '搜索网页', exact: true })).toBeVisible();
+  await expect(promptOf(second)).toBeVisible();
   const beforeShared = calls.length;
   const ledgerBefore = await page.evaluate(
     async () => (await chrome.storage.local.get('seektab-usage-v1'))['seektab-usage-v1'],
@@ -265,8 +339,8 @@ try {
   const sumUsage = (ledger) =>
     ledger.days.reduce((sum, d) => sum + d.results + d.empty + d.failed + d.cancelled, 0);
   await submit('case-shared-tabs');
-  await second.getByRole('textbox', { name: '搜索网页', exact: true }).fill('case-shared-tabs');
-  await second.getByRole('button', { name: '提交搜索' }).click();
+  await promptOf(second).fill('case-shared-tabs');
+  await promptOf(second).press('Enter');
   await expect(page.locator('.result-card')).toHaveCount(3);
   await expect(second.getByText('3 条结果 · 本地缓存', { exact: true })).toBeVisible();
   expect(calls).toHaveLength(beforeShared + 1);
@@ -289,7 +363,7 @@ try {
     .toBe(true);
   await page.screenshot({ path: path.join(artifacts, 'results-mobile.png'), fullPage: true });
   await page.getByRole('button', { name: 'SeekTab 首页' }).click();
-  await expect(page.getByRole('textbox', { name: '搜索网页', exact: true })).toHaveValue('');
+  await expect(promptOf(page)).toHaveValue('');
   await expect(
     page.locator('.hero, .quick-section, .recent-section, .page-footer, .search-aside'),
   ).toHaveCount(0);
@@ -311,7 +385,7 @@ try {
   await page.getByLabel('名称', { exact: true }).fill('测试工作台');
   await page.getByLabel('网址', { exact: true }).fill('example.com/work');
   await page.getByRole('button', { name: '保存链接', exact: true }).click();
-  await expect(page.getByRole('link', { name: '测试工作台' })).toHaveAttribute(
+  await expect(page.getByRole('link', { name: '测试工作台', exact: true })).toHaveAttribute(
     'href',
     'https://example.com/work',
   );
@@ -418,6 +492,104 @@ try {
   expect(data.cache).toEqual([]);
   record('Disabling history/cache clears and suppresses local search data');
 
+  await submit('ai-question');
+  await expect(page.locator('.result-card')).toHaveCount(3);
+  expect(aiCalls).toHaveLength(0);
+  await page.getByRole('button', { name: 'AI 总结' }).click();
+  await expect(page.getByRole('dialog')).toContainText('API 费用');
+  expect(aiCalls).toHaveLength(0);
+  await page.getByRole('button', { name: '继续', exact: true }).click();
+  const aiPanel = page.getByRole('region', { name: 'AI 回答' });
+  await expect(aiPanel).toContainText('Answer one');
+  await expect(aiPanel.locator('a.cite')).toHaveCount(3);
+  await expect(aiPanel.locator('a.cite').first()).toHaveAttribute(
+    'href',
+    'https://example.com/discover',
+  );
+  await expect(aiPanel).toContainText('输入 12 / 输出 34 tokens');
+  await expect(aiPanel).not.toContainText('SECRET-THOUGHT');
+  await expect(aiPanel).not.toContainText('[S99]');
+  expect(aiCalls).toHaveLength(1);
+  expect(aiCalls[0].authorization).toBe('Bearer test-only-not-a-real-key');
+  expect(aiCalls[0].data).toMatchObject({
+    model: 'deepseek-flash',
+    stream: true,
+    max_output_tokens: 4000,
+  });
+  expect(aiCalls[0].data.input).toContain('<sources>');
+  expect(aiCalls[0].data.input).toContain('探索开放网络，发现新的可能');
+  expect(JSON.stringify(aiCalls[0].data)).not.toContain('test-only-not-a-real-key');
+  let aiData = await page.evaluate(() => chrome.storage.local.get(null));
+  expect(JSON.stringify(aiData)).not.toContain('Answer one');
+  expect(aiData['seektab-ai-usage-v1'].days[0]).toMatchObject({
+    requests: 1,
+    inputTokens: 12,
+    outputTokens: 34,
+  });
+  await page.screenshot({ path: path.join(artifacts, 'ai-answer.png'), fullPage: true });
+  await promptOf(page).fill('ai-palette');
+  await expect(page.getByRole('option', { name: /向 AI 提问「ai-palette」/ })).toBeVisible();
+  expect(aiCalls).toHaveLength(1);
+  await page.getByRole('button', { name: 'AI', exact: true }).click();
+  await promptOf(page).press('Enter');
+  await expect.poll(() => aiCalls.length).toBe(2);
+  await expect(page.getByRole('region', { name: 'AI 回答' })).toContainText('Answer one');
+  await page.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({ settings: { ...settings, aiDailyCap: 2 } });
+  });
+  await page.getByRole('button', { name: '重新生成' }).click();
+  await expect(page.getByRole('alert').filter({ hasText: '今日 AI 请求上限' })).toBeVisible();
+  expect(aiCalls).toHaveLength(2);
+  await page.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({ settings: { ...settings, aiDailyCap: 0 } });
+  });
+  aiMode = 'delay';
+  await page.getByRole('button', { name: '重新生成' }).click();
+  await expect(page.getByRole('button', { name: '停止生成' })).toBeVisible();
+  await page.getByRole('button', { name: '停止生成' }).click();
+  await page.waitForTimeout(1800);
+  await expect(page.getByRole('region', { name: 'AI 回答' }).locator('a.cite')).toHaveCount(0);
+  aiMode = 'ok';
+  record(
+    'AI answers run only on request, cite real sources, stay out of storage, honour the daily cap, and can be stopped',
+  );
+
+  await expect(page.locator('.rail-links .link-icon img').first()).toHaveAttribute(
+    'src',
+    /\/_favicon\/\?pageUrl=/,
+  );
+  await page.getByRole('button', { name: '重置搜索' }).click();
+  await expect(page.locator('.result-card')).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'AI 回答' })).toHaveCount(0);
+  await expect(promptOf(page)).toHaveValue('');
+  await expect(page.getByRole('button', { name: '重置搜索' })).toHaveCount(0);
+  record(
+    'Reset clears the current search, results and AI answer; shortcut icons use the local favicon cache',
+  );
+
+  await submit('sort-check');
+  await expect(page.locator('.result-card')).toHaveCount(3);
+  const firstTitle = () => page.locator('.result-card h2').first().innerText();
+  expect(await firstTitle()).toContain('探索开放网络');
+  await page.getByRole('button', { name: '按日期' }).click();
+  await expect(page.getByRole('button', { name: '按日期' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.locator('.result-card h2').last()).toContainText('把好奇心变成下一次行动');
+  await page.reload();
+  await submit('sort-check');
+  await expect(page.locator('.result-card')).toHaveCount(3);
+  await expect(page.getByRole('button', { name: '按日期' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await page.getByRole('button', { name: '按相关度' }).click();
+  expect(await firstTitle()).toContain('探索开放网络');
+  record('Results can be sorted by relevance or date without a new request; the choice persists');
+
   await page.getByRole('button', { name: '打开设置' }).click();
   await page.getByRole('checkbox', { name: /缓存搜索结果/ }).check();
   await page.getByText('高级搜索筛选', { exact: true }).click();
@@ -499,6 +671,33 @@ try {
   record(
     'Balance and request report are frozen until explicit refresh and never include search text',
   );
+
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.getByRole('button', { name: '切换到浅色模式' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.getByRole('button', { name: '切换到深色模式' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.getByRole('button', { name: '切换语言' }).click();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await expect(page.getByRole('button', { name: 'Switch to light mode' })).toBeVisible();
+  await expect(
+    page.getByRole('combobox', { name: 'Search the web, tabs, bookmarks and history' }),
+  ).toBeVisible();
+  await page.screenshot({ path: path.join(artifacts, 'home-english-dark.png') });
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(page.getByRole('button', { name: 'Open settings' })).toBeVisible();
+  await page.getByRole('button', { name: 'Open settings' }).click();
+  await expect(page.getByRole('combobox', { name: /Language/ })).toHaveValue('en');
+  await page.getByRole('button', { name: 'Close dialog' }).click();
+  await page.getByRole('button', { name: 'Switch to light mode' }).click();
+  await page
+    .getByRole('button', { name: '切换语言' })
+    .or(page.getByRole('button', { name: 'Switch language' }))
+    .click();
+  await expect(page.getByRole('button', { name: '切换到深色模式' })).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  record('Dark/light and Chinese/English switches apply immediately and persist after reload');
 
   await page.getByRole('button', { name: '打开设置' }).click();
   await page.getByRole('button', { name: '移除已存密钥', exact: true }).click();

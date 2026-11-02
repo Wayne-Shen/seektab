@@ -1,5 +1,9 @@
 # DeepSeek Search API verification
 
+## 2026-11-02 AI answers (Responses API)
+
+Checked the official Responses guide and the Search/Fetch guide on 2026-11-02. Used contract: `POST https://api.deepseek.com/responses`, Bearer authentication, `{ model, instructions, input, stream: true, max_output_tokens }`; models `deepseek-flash` (default) and `deepseek-v4-pro`. The built-in `web_search` tool is only supported by `deepseek-v4-pro` and is **not** used. The API is stateless (no `previous_response_id`). Streaming reads `response.output_text.delta` (text) and `response.completed` / `response.incomplete` (`response.usage.input_tokens` / `output_tokens`); `response.failed` is an error; reasoning events are ignored. Fetch (`POST /v1/tools/fetch`) is not used. The user reported on 2026-11-02 that a streamed AI answer works with their own key after the parser was made tolerant (the first attempt with a 1000-token limit returned no text). **Not verified:** the non-streaming response shape, AI pricing, and per-model limits; automated tests mock the endpoint. Re-check the official docs before changing these fields.
+
 ## Balance and local usage reporting
 
 Checked 2026-11-02: the official `GET https://api.deepseek.com/user/balance` returns account availability and balance rows, including currency and total, granted and topped-up balances as strings. No public account-wide usage-history API was identified in the official API reference. SeekTab keeps its own daily request counts, which are not authoritative billing records, and fetches balance only on explicit report refresh. [Official balance reference](https://api-docs.deepseek.com/api/get-user-balance/).

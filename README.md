@@ -25,7 +25,7 @@ SeekTab replaces Chrome's New Tab page with a search-first Material 3 Expressive
 ## Features
 
 - **Manifest V3 New Tab replacement** with light, dark, and system themes.
-- **Web results first:** titles, snippets, source names/domains, and publication dates when available. No generated AI answers.
+- **Web results first:** titles, snippets, source names/domains, and publication dates when available. Optional, explicit-only AI answers (see below); never generated automatically.
 - **Bring your own key:** masked key input, connection test, local saving, and key removal.
 - **Quick links in Settings:** open, add, edit, and remove up to eight saved shortcuts.
 - **Local history:** up to 50 unique successful searches, with opt-out and clearing controls.
@@ -86,9 +86,13 @@ The extension renders the response's `results` array. It does not call a chat mo
 | Permission                   | Purpose                                                                |
 | ---------------------------- | ---------------------------------------------------------------------- |
 | `storage`                    | Store the key, settings, shortcuts, history, and cache on this device. |
+| `tabs`                       | Match open tab titles/URLs locally and switch to a chosen tab.         |
+| `bookmarks`                  | Match bookmarks locally while you type.                                |
+| `history`                    | Match Chrome browsing history locally while you type.                  |
+| `favicon`                    | Show shortcut icons from Chrome's local favicon cache (no network).    |
 | `https://api.deepseek.com/*` | Send search requests directly to the provider.                         |
 
-There are no content scripts, background workers, analytics, remote fonts, remote favicon requests, or permissions for browsing history, bookmarks, or general website access. Extension code and UI resources are bundled locally. Results are rendered as escaped text, and links are limited to HTTP/HTTPS URLs without embedded credentials.
+There are no content scripts, background workers, analytics, remote fonts, remote favicon requests, or general website access. Tabs, bookmarks, and browsing history are matched only on this device while you type (each source can be turned off in Settings); they are never uploaded or copied into SeekTab storage, and your query goes to DeepSeek only when you choose the "web" row. Extension code and UI resources are bundled locally. Results are rendered as escaped text, and links are limited to HTTP/HTTPS URLs without embedded credentials.
 
 Submitted queries and the API key are sent to DeepSeek over HTTPS; the key is carried in the Authorization header. DeepSeek processes those requests under its own service policies. Opening a result or shortcut visits that website normally.
 
@@ -183,3 +187,11 @@ Bug reports, documentation improvements, and pull requests are welcome. See [CON
 [MIT](LICENSE) © 2026 Wayne-Shen and SeekTab contributors.
 
 Bundled dependencies retain their own licenses; see [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
+
+## Language and theme
+
+The interface is available in Chinese and English. Use the quick toggles in the right-hand rail (language, light/dark) or Settings; the language defaults to your browser language. Both choices are stored locally.
+
+## AI answers
+
+AI answers are optional and happen only when you ask: choose the **AI** scope (or the “Ask AI about …” row) or click **AI summary** on web results. SeekTab uses the Search results it already has (the `summary` field of the top results, 8 by default) and sends one streamed request to `POST https://api.deepseek.com/responses` (default model `deepseek-flash`). Only your question and those results are sent: never tabs, bookmarks, browsing history, or your key beyond authentication. The answer is plain text with numbered citations that link to the real result URLs; citations that do not match a result are removed. Answers are kept in memory only and are not saved. Each answer costs one Search call plus one model call, which may be billed; a first-use notice explains this, and Settings offers a local daily limit (default 20), the model, source count, and length. Local usage reports show AI request and token counts without question text. Typing and opening a new tab never call the model.

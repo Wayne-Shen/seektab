@@ -1,4 +1,8 @@
+import { t } from './i18n';
 import {
+  ACCENTS,
+  AI_MODELS,
+  AI_TOKEN_CHOICES,
   CACHE_TTL,
   DEFAULT_LINKS,
   DEFAULT_SETTINGS,
@@ -12,6 +16,7 @@ import {
   type Theme,
 } from './types';
 import { safeUrl } from './api';
+import { normalizeLocale } from './i18n';
 
 export function normalizeState(raw: Partial<LocalState>): LocalState {
   const input = raw.settings;
@@ -37,6 +42,26 @@ export function normalizeState(raw: Partial<LocalState>): LocalState {
     showScores: input?.showScores === true,
     localization: typeof input?.localization === 'string' ? input.localization.slice(0, 15) : '',
     needContent: input?.needContent === true,
+    accent: ACCENTS.find((a) => a === input?.accent) ?? DEFAULT_SETTINGS.accent,
+    locale: normalizeLocale(input?.locale, globalThis.navigator?.language),
+    aiEnabled: input?.aiEnabled !== false,
+    aiAcknowledged: input?.aiAcknowledged === true,
+    aiModel: AI_MODELS.find((m) => m === input?.aiModel) ?? DEFAULT_SETTINGS.aiModel,
+    aiSources:
+      Number.isInteger(input?.aiSources) && input!.aiSources >= 3 && input!.aiSources <= 10
+        ? input!.aiSources
+        : DEFAULT_SETTINGS.aiSources,
+    aiMaxTokens:
+      AI_TOKEN_CHOICES.find((n) => n === input?.aiMaxTokens) ?? DEFAULT_SETTINGS.aiMaxTokens,
+    aiDailyCap:
+      Number.isInteger(input?.aiDailyCap) && input!.aiDailyCap >= 0 && input!.aiDailyCap <= 1000
+        ? input!.aiDailyCap
+        : DEFAULT_SETTINGS.aiDailyCap,
+    sortBy: input?.sortBy === 'date' ? 'date' : 'relevance',
+    clock12: input?.clock12 === true,
+    searchTabs: input?.searchTabs !== false,
+    searchBookmarks: input?.searchBookmarks !== false,
+    searchHistory: input?.searchHistory !== false,
     openNewTab: typeof input?.openNewTab === 'boolean' ? input.openNewTab : true,
   };
   return {
@@ -104,7 +129,7 @@ export function normalizeState(raw: Partial<LocalState>): LocalState {
 }
 export async function initialize(): Promise<LocalState> {
   if (!globalThis.chrome?.storage?.local)
-    throw new Error('请通过 chrome://extensions 加载扩展后打开新标签页。');
+    throw new Error(t('请通过 chrome://extensions 加载扩展后打开新标签页。'));
   await chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
   return readState();
 }
@@ -155,7 +180,7 @@ export function remember(state: LocalState, entry: CacheEntry, revision: number)
 export async function savePreferences(settings: Settings, key: string): Promise<LocalState> {
   const trimmed = key.trim();
   if (trimmed.length > 512 || /\s/.test(trimmed))
-    throw new Error('API Key 格式不正确，请仅粘贴密钥本身。');
+    throw new Error(t('API Key 格式不正确，请仅粘贴密钥本身。'));
   const state = await updateState((s) => ({
     ...s,
     settings,
@@ -183,6 +208,10 @@ export async function clearData(kind: 'history' | 'cache' | 'all'): Promise<Loca
 export async function setTheme(theme: Theme): Promise<void> {
   await updateState((s) => ({ ...s, settings: { ...s.settings, theme } }));
   localStorage.setItem('seektab-theme', theme);
+}
+export async function setPreference(patch: Partial<Settings>): Promise<void> {
+  await updateState((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
+  if (patch.theme) localStorage.setItem('seektab-theme', patch.theme);
 }
 export async function removeApiKey(): Promise<void> {
   await updateState((s) => ({ ...s, apiKey: '' }));
