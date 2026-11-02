@@ -38,7 +38,7 @@ SeekTab replaces Chrome's New Tab page with a search-first Material 3 Expressive
 
 Requires **Chrome 120 or later** and a DeepSeek API key with access to the Search API. The documented local browser checks used Chrome for Testing 147; older supported versions have not all been tested individually.
 
-1. Open [Releases](https://github.com/Wayne-Shen/seektab/releases/latest) and download `SeekTab-1.2.0-unpacked.zip`.
+1. Open [Releases](https://github.com/Wayne-Shen/seektab/releases/latest) and download `SeekTab-1.3.0-unpacked.zip`.
 2. Extract the ZIP and keep the `SeekTab-unpacked` folder in a permanent location.
 3. Open `chrome://extensions` in Chrome and enable **Developer mode**.
 4. Choose **Load unpacked** and select the folder containing `manifest.json`.
@@ -60,6 +60,10 @@ Release ZIPs are built and tested by GitHub Actions and include SHA-256 checksum
 Settings provide persistent site inclusion and exclusion, language codes, date bounds, an exact phrase, excluded words, 1–50 results, optional long summaries, and provider scores. Filters are compiled into the official query syntax, and their combined query must fit 128 Unicode characters. When filters modify the query, the original question is sent as `ori_question`.
 
 An optional IPv4 address can be entered for localized results; it is stored locally and sent to DeepSeek on searches. Optional page content is limited to 12,000 displayed characters per result and is not cached. Searches using filters, localization, or page content bypass the results cache and may incur another provider charge on repetition. Scores are provider estimates, not fact checking. No IP address is detected automatically.
+
+## Local API usage and balance
+
+Open **API usage and balance** in the top bar. Click Refresh to query the official balance endpoint and update a locally saved report snapshot; opening the report does not make a request. The report displays the snapshot cutoff and balance retrieval time, the tracking start, totals, and up to 30 daily rows. It counts completed Search requests made by this extension on this device, including connection tests, across API keys; cached searches and other applications are excluded. Daily aggregates are retained for up to 366 dates and do not contain queries or keys. Records begin with this feature, can be incomplete if storage is unavailable or a tab closes, and are not an authoritative provider bill. The official dashboard provides account-wide usage. Balance and usage data are stored locally. Refreshing the balance uses the saved key and the existing DeepSeek host permission.
 
 ## How search works
 
@@ -129,7 +133,7 @@ Browser tests load the real unpacked extension into an isolated temporary Chromi
 
 Set `CHROMIUM_PATH` to a compatible existing Chromium / Chrome for Testing executable if needed. Use Playwright's Chromium for automated side-loading, as normal Chrome builds may restrict command-line extension loading.
 
-The v1.2.0 validation includes **20 core tests and 24 browser checks**. It covers New Tab replacement, key handling, result fields, cache expiry rules, cross-tab coordination, shortcuts, responsive layouts, error states, cancellation, and clearing data during an in-flight request. See the [validation report](docs/TEST-REPORT.md).
+The v1.3.0 validation includes **22 core tests and 25 browser checks**. It covers New Tab replacement, key handling, result fields, cache expiry rules, cross-tab coordination, shortcuts, responsive layouts, error states, cancellation, and clearing data during an in-flight request. See the [validation report](docs/TEST-REPORT.md).
 
 **Real-account authentication and live search quality have not been verified with a user key.** Use Test connection after installation to validate your own account and network.
 

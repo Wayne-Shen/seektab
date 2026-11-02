@@ -65,6 +65,8 @@ const fixture = {
 let mode = 'success';
 let calls = [];
 let foreignRequests = [];
+let balanceCalls = 0;
+let balanceFailure = false;
 try {
   context = await chromium.launchPersistentContext(profile, {
     channel: 'chromium',
@@ -79,6 +81,25 @@ try {
   });
   await context.route('https://api.deepseek.com/**', async (route) => {
     const request = route.request();
+    if (request.url() === 'https://api.deepseek.com/user/balance') {
+      balanceCalls++;
+      if (balanceFailure) return route.fulfill({ status: 500, body: 'RAW-PRIVATE-BALANCE-ERROR' });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          is_available: true,
+          balance_infos: [
+            {
+              currency: 'CNY',
+              total_balance: '12.50',
+              granted_balance: '2.00',
+              topped_up_balance: '10.50',
+            },
+          ],
+        }),
+      });
+    }
     calls.push({
       url: request.url(),
       data: request.postDataJSON(),
@@ -238,12 +259,21 @@ try {
   await second.goto(`chrome-extension://${extensionId}/index.html`);
   await expect(second.getByRole('textbox', { name: '搜索网页', exact: true })).toBeVisible();
   const beforeShared = calls.length;
+  const ledgerBefore = await page.evaluate(
+    async () => (await chrome.storage.local.get('seektab-usage-v1'))['seektab-usage-v1'],
+  );
+  const sumUsage = (ledger) =>
+    ledger.days.reduce((sum, d) => sum + d.results + d.empty + d.failed + d.cancelled, 0);
   await submit('case-shared-tabs');
   await second.getByRole('textbox', { name: '搜索网页', exact: true }).fill('case-shared-tabs');
   await second.getByRole('button', { name: '提交搜索' }).click();
   await expect(page.locator('.result-card')).toHaveCount(3);
   await expect(second.getByText('3 条结果 · 本地缓存', { exact: true })).toBeVisible();
   expect(calls).toHaveLength(beforeShared + 1);
+  const ledgerAfter = await page.evaluate(
+    async () => (await chrome.storage.local.get('seektab-usage-v1'))['seektab-usage-v1'],
+  );
+  expect(sumUsage(ledgerAfter) - sumUsage(ledgerBefore)).toBe(1);
   await second.close();
   mode = 'success';
   record('Concurrent tabs share a request lock and reuse the completed result');
@@ -414,6 +444,61 @@ try {
   expect(JSON.stringify(advancedState.cache)).not.toContain('测试正文');
   expect(advancedState.cache.some((entry) => entry.query.includes('advanced'))).toBe(false);
   record('Advanced filters and request options use provider fields without caching page content');
+
+  await page.getByRole('button', { name: 'API 用量与余额' }).click();
+  await expect(page.getByText('尚未刷新')).toBeVisible();
+  expect(balanceCalls).toBe(0);
+  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await expect(page.getByText('CNY 12.50')).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 700 });
+  await expect
+    .poll(() => page.locator('dialog').evaluate((d) => d.scrollWidth <= d.clientWidth))
+    .toBe(true);
+  await page.screenshot({ path: path.join(artifacts, 'billing-mobile.png') });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expect(page.getByText(/数据截止：/)).toBeVisible();
+  expect(balanceCalls).toBe(1);
+  const firstReport = await page.evaluate(
+    async () => (await chrome.storage.local.get('seektab-report-v1'))['seektab-report-v1'],
+  );
+  expect(firstReport.days.length).toBeGreaterThan(0);
+  await page.getByRole('button', { name: '关闭弹窗' }).click();
+  await submit('billing-snapshot');
+  await expect.poll(() => calls.at(-1)?.data.query).toContain('billing-snapshot');
+  await expect(page.locator('.result-card')).toHaveCount(3);
+  await page.getByRole('button', { name: 'API 用量与余额' }).click();
+  expect(balanceCalls).toBe(1);
+  expect(
+    await page.evaluate(
+      async () => (await chrome.storage.local.get('seektab-report-v1'))['seektab-report-v1'],
+    ),
+  ).toEqual(firstReport);
+  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await expect.poll(() => balanceCalls).toBe(2);
+  await expect
+    .poll(
+      async () =>
+        (
+          await page.evaluate(
+            async () => (await chrome.storage.local.get('seektab-report-v1'))['seektab-report-v1'],
+          )
+        ).refreshedAt,
+    )
+    .toBeGreaterThan(firstReport.refreshedAt);
+  const refreshed = await page.evaluate(
+    async () => (await chrome.storage.local.get('seektab-report-v1'))['seektab-report-v1'],
+  );
+  expect(refreshed.days[0].results).toBeGreaterThan(firstReport.days[0].results);
+  expect(JSON.stringify(refreshed)).not.toContain('billing-snapshot');
+  balanceFailure = true;
+  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await expect(page.getByText('余额查询失败（HTTP 500）。')).toBeVisible();
+  await expect(page.getByRole('dialog')).not.toContainText('RAW-PRIVATE-BALANCE-ERROR');
+  expect(balanceCalls).toBe(3);
+  await page.getByRole('button', { name: '关闭弹窗' }).click();
+  record(
+    'Balance and request report are frozen until explicit refresh and never include search text',
+  );
 
   await page.getByRole('button', { name: '打开设置' }).click();
   await page.getByRole('button', { name: '移除已存密钥', exact: true }).click();

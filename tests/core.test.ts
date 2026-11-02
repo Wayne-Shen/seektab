@@ -10,6 +10,7 @@ import {
 } from '../src/lib/api';
 import { cacheFor, normalizeState, remember } from '../src/lib/store';
 import { CACHE_TTL, MAX_CACHE, MAX_HISTORY } from '../src/lib/types';
+import { recordInLedger, fetchBalance, dayKey } from '../src/lib/billing';
 
 const row = {
   title: '<img src=x onerror=alert(1)>',
@@ -254,5 +255,58 @@ describe('advanced request options', () => {
       searchWeb('hello', 'test-key', 10, undefined, { localization: '999.1.1.1' }),
     ).rejects.toThrow('IPv4');
     expect(fetch).toHaveBeenCalledOnce();
+  });
+});
+
+describe('billing data boundaries', () => {
+  it('aggregates only counts by local day without query or key data', () => {
+    const at = new Date(2026, 10, 2, 12).getTime();
+    let data = recordInLedger(undefined, 'results', at);
+    data = recordInLedger(data, 'failed', at + 1000);
+    data = recordInLedger(data, 'empty', at + 2000);
+    expect(data.trackingSince).toBe(at);
+    expect(data.days).toEqual([{ day: dayKey(at), results: 1, empty: 1, failed: 1, cancelled: 0 }]);
+    expect(JSON.stringify(data)).not.toContain('test-key');
+  });
+  it('uses the official balance endpoint with narrow request handling and validates responses', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          is_available: true,
+          balance_infos: [
+            {
+              currency: 'CNY',
+              total_balance: '12.50',
+              granted_balance: '2.00',
+              topped_up_balance: '10.50',
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal('fetch', fetch);
+    await expect(fetchBalance('test-key')).resolves.toEqual({
+      available: true,
+      rows: [{ currency: 'CNY', total: '12.50', granted: '2.00', toppedUp: '10.50' }],
+    });
+    expect(fetch.mock.calls[0][0]).toBe('https://api.deepseek.com/user/balance');
+    expect(fetch.mock.calls[0][1]).toMatchObject({
+      method: 'GET',
+      credentials: 'omit',
+      cache: 'no-store',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer',
+    });
+    fetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          is_available: true,
+          balance_infos: [{ currency: '<svg>', total_balance: 'bad' }],
+        }),
+        { status: 200 },
+      ),
+    );
+    await expect(fetchBalance('test-key')).rejects.toThrow('格式');
   });
 });

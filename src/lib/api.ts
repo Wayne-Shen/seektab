@@ -145,7 +145,12 @@ export async function searchWeb(
   key: string,
   count: number,
   signal?: AbortSignal,
-  options: { localization?: string; needContent?: boolean; originalQuestion?: string } = {},
+  options: {
+    localization?: string;
+    needContent?: boolean;
+    originalQuestion?: string;
+    onRequest?: () => void;
+  } = {},
 ): Promise<SearchResult[]> {
   query = validateQuery(query);
   if (!key.trim()) throw new SearchError('key', '添加你的 DeepSeek API Key，即可开始搜索。');
@@ -167,6 +172,7 @@ export async function searchWeb(
     controller.abort();
   }, 25_000);
   try {
+    options.onRequest?.();
     const response = await fetch(SEARCH_ENDPOINT, {
       method: 'POST',
       headers: { Authorization: `Bearer ${key.trim()}`, 'Content-Type': 'application/json' },
