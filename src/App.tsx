@@ -292,12 +292,83 @@ function SettingsModal({
                   value={draft.count}
                   onChange={(e) => patch({ count: Number(e.target.value) })}
                 >
-                  <option value={5}>5 条结果</option>
-                  <option value={10}>10 条结果</option>
-                  <option value={20}>20 条结果</option>
+                  {Array.from({ length: 50 }, (_, i) => i + 1).map((count) => (
+                    <option key={count} value={count}>
+                      {count} 条结果
+                    </option>
+                  ))}
                 </select>
               </label>
             </div>
+            <details className="advanced-settings">
+              <summary>高级搜索筛选</summary>
+              <p className="field-help">筛选会附加到每次搜索；搜索词与筛选合计最多 128 个字符。</p>
+              <div className="settings-grid">
+                {(
+                  [
+                    ['site', '限定站点', '多个域名用空格分隔'],
+                    ['excludeSite', '排除站点', '多个域名用空格分隔'],
+                    ['language', '语言代码', '例如 zh,en'],
+                    ['exactPhrase', '精确短语', ''],
+                    ['excludeTerms', '排除关键词', '用空格分隔'],
+                  ] as const
+                ).map(([field, label, placeholder]) => (
+                  <label key={field} className="field-label">
+                    {label}
+                    <input
+                      type="text"
+                      value={draft[field]}
+                      placeholder={placeholder}
+                      onChange={(e) => patch({ [field]: e.target.value })}
+                    />
+                  </label>
+                ))}
+                {(
+                  [
+                    ['after', '发布于此日期之后'],
+                    ['before', '发布于此日期之前'],
+                  ] as const
+                ).map(([field, label]) => (
+                  <label key={field} className="field-label">
+                    {label}
+                    <input
+                      type="date"
+                      value={draft[field]}
+                      onChange={(e) => patch({ [field]: e.target.value })}
+                    />
+                  </label>
+                ))}
+              </div>
+              <label className="field-label">
+                本地化 IPv4（可选）
+                <input
+                  value={draft.localization}
+                  placeholder="留空不发送"
+                  onChange={(e) => patch({ localization: e.target.value })}
+                />
+              </label>
+              <p className="field-help">
+                填写后此地址会随搜索发送给 DeepSeek。仅在需要本地化结果时输入。
+              </p>
+              <Toggle
+                label="获取网页正文"
+                description="请求正文可能增加响应体积；正文仅在当前页面显示，不写入缓存。"
+                checked={draft.needContent}
+                onChange={(needContent) => patch({ needContent })}
+              />
+              <Toggle
+                label="显示长摘要"
+                description="显示 DeepSeek 返回的长摘要。"
+                checked={draft.showSummary}
+                onChange={(showSummary) => patch({ showSummary })}
+              />
+              <Toggle
+                label="显示评分"
+                description="显示 DeepSeek 的排序分数和权威性评级；这些不是事实核验。"
+                checked={draft.showScores}
+                onChange={(showScores) => patch({ showScores })}
+              />
+            </details>
             <Toggle
               label="在新标签页打开链接"
               description="保留当前搜索结果，继续探索。"
@@ -943,6 +1014,31 @@ export default function App() {
                             </a>
                           </h2>
                           {r.snippet && <p className="result-snippet">{r.snippet}</p>}
+                          {state.settings.needContent && r.content && (
+                            <details>
+                              <summary>网页正文（最多显示 12,000 字符）</summary>
+                              <p className="result-snippet">{r.content}</p>
+                            </details>
+                          )}
+                          {state.settings.showSummary && r.summary && (
+                            <details>
+                              <summary>长摘要</summary>
+                              <p className="result-snippet">{r.summary}</p>
+                            </details>
+                          )}
+                          {state.settings.showScores &&
+                            (r.score != null || (r.authority != null && r.authority >= 0)) && (
+                              <p className="result-snippet">
+                                {r.score != null && `排序 ${r.score}/3`}
+                                {r.score != null &&
+                                  r.authority != null &&
+                                  r.authority >= 0 &&
+                                  ' · '}
+                                {r.authority != null &&
+                                  r.authority >= 0 &&
+                                  `权威性 ${r.authority}/4`}
+                              </p>
+                            )}
                           <div className="result-meta">
                             {r.date && (
                               <time dateTime={r.date}>

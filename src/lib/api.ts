@@ -1,4 +1,4 @@
-import type { SearchResult } from './types';
+import type { SearchResult, Settings } from './types';
 
 export const SEARCH_ENDPOINT = 'https://api.deepseek.com/v1/tools/search';
 export class SearchError extends Error {
@@ -17,6 +17,67 @@ export function validateQuery(value: string): string {
   if ([...query].length > 128)
     throw new SearchError('query', '搜索词最多为 128 个字符，请缩短后重试。');
   return query;
+}
+export function compileQuery(query: string, settings: Settings): string {
+  const parts = [validateQuery(query)];
+  for (const [label, value] of [
+    ['site', settings.site],
+    ['-site', settings.excludeSite],
+  ] as const) {
+    if (value.trim()) {
+      const sites = value.trim().split(/\s+/);
+      if (
+        sites.some(
+          (v) =>
+            !/^(?=.{1,253}$)[a-z0-9.-]+$/i.test(v) ||
+            v.startsWith('.') ||
+            v.endsWith('.') ||
+            v.includes('..') ||
+            !v.includes('.') ||
+            v.split('.').some((label) => !label || label.startsWith('-') || label.endsWith('-')),
+        )
+      )
+        throw new SearchError('query', '站点筛选格式无效，请输入域名。');
+      parts.push(
+        label === 'site'
+          ? sites.map((v) => `site:${v}`).join(' OR ')
+          : sites.map((v) => `-site:${v}`).join(' '),
+      );
+    }
+  }
+  if (settings.language.trim()) {
+    const lang = settings.language.trim();
+    if (!/^[a-z]{2,3}(?:-[a-z0-9]{2,8})?(?:,[a-z]{2,3}(?:-[a-z0-9]{2,8})?)*$/i.test(lang))
+      throw new SearchError('query', '语言请输入逗号分隔的语言代码，例如 zh,en。');
+    parts.push(`lang:${lang}`);
+  }
+  for (const [op, value] of [
+    ['after', settings.after],
+    ['before', settings.before],
+  ] as const)
+    if (value) {
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+        !Number.isFinite(Date.parse(value)) ||
+        new Date(value).toISOString().slice(0, 10) !== value
+      )
+        throw new SearchError('query', '日期格式无效。');
+      parts.push(`${op}:${value}`);
+    }
+  if (settings.after && settings.before && settings.after >= settings.before)
+    throw new SearchError('query', '开始日期必须早于结束日期。');
+  if (settings.exactPhrase.trim()) {
+    if (settings.exactPhrase.includes('"'))
+      throw new SearchError('query', '精确短语不能包含引号。');
+    parts.push(`"${settings.exactPhrase.trim()}"`);
+  }
+  if (settings.excludeTerms.trim()) {
+    const terms = settings.excludeTerms.trim().split(/\s+/);
+    if (terms.some((term) => !/^[\p{L}\p{N}_-]+$/u.test(term)))
+      throw new SearchError('query', '排除词请使用空格分隔的单词。');
+    parts.push(...terms.map((term) => `-${term}`));
+  }
+  return validateQuery(parts.join(' '));
 }
 export function safeUrl(value: unknown): string | null {
   if (typeof value !== 'string' || value.length > 8192) return null;
@@ -44,6 +105,22 @@ export function parseResults(data: unknown): SearchResult[] {
       title: text(item.title, 500) || new URL(url).hostname,
       url,
       snippet: text(item.snippet, 2000),
+      ...(typeof item.content === 'string' && item.content
+        ? { content: text(item.content, 12000) }
+        : {}),
+      ...(typeof item.summary === 'string' ? { summary: text(item.summary, 2000) } : {}),
+      ...(typeof item.authority === 'number' &&
+      Number.isInteger(item.authority) &&
+      item.authority >= -1 &&
+      item.authority <= 4
+        ? { authority: item.authority }
+        : {}),
+      ...(typeof item.rerank_score === 'number' &&
+      Number.isFinite(item.rerank_score) &&
+      item.rerank_score >= 0 &&
+      item.rerank_score <= 3
+        ? { score: item.rerank_score }
+        : {}),
       siteName: text(item.site_name, 200) || null,
       date:
         typeof item.date === 'string' && Number.isFinite(Date.parse(item.date)) ? item.date : null,
@@ -68,11 +145,18 @@ export async function searchWeb(
   key: string,
   count: number,
   signal?: AbortSignal,
+  options: { localization?: string; needContent?: boolean; originalQuestion?: string } = {},
 ): Promise<SearchResult[]> {
   query = validateQuery(query);
   if (!key.trim()) throw new SearchError('key', '添加你的 DeepSeek API Key，即可开始搜索。');
   if (!Number.isInteger(count) || count < 1 || count > 50)
     throw new SearchError('query', '返回条数应在 1–50 之间。');
+  if (options.localization) {
+    const octets = options.localization.split('.');
+    if (octets.length !== 4 || octets.some((x) => !/^(0|[1-9]\d{0,2})$/.test(x) || Number(x) > 255))
+      throw new SearchError('query', '本地化地址必须是有效的 IPv4 地址。');
+  }
+  if (options.originalQuestion) validateQuery(options.originalQuestion);
   if (signal?.aborted) throw new SearchError('cancelled', '搜索已取消。');
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -86,7 +170,13 @@ export async function searchWeb(
     const response = await fetch(SEARCH_ENDPOINT, {
       method: 'POST',
       headers: { Authorization: `Bearer ${key.trim()}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, count, need_content: false }),
+      body: JSON.stringify({
+        query,
+        count,
+        need_content: options.needContent === true,
+        ...(options.localization ? { localization: options.localization } : {}),
+        ...(options.originalQuestion ? { ori_question: options.originalQuestion } : {}),
+      }),
       signal: controller.signal,
       credentials: 'omit',
       cache: 'no-store',
@@ -119,7 +209,9 @@ export async function searchWeb(
     } catch {
       throw new SearchError('schema', '搜索服务返回了无法识别的数据，请稍后重试。');
     }
-    return parseResults(data).slice(0, count);
+    return parseResults(data)
+      .slice(0, count)
+      .map((item) => (options.needContent ? item : { ...item, content: undefined }));
   } catch (error) {
     if (error instanceof SearchError) throw error;
     if (controller.signal.aborted)

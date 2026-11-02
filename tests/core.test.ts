@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  compileQuery,
   parseResults,
   retryAt,
   safeUrl,
@@ -53,6 +54,10 @@ describe('official Search API boundary', () => {
       snippet: row.snippet,
       siteName: 'Example',
       date: row.date,
+      summary: row.summary,
+      authority: 3,
+      score: 2.4,
+      content: undefined,
     });
   });
   it('counts Unicode code points and rejects blank or oversized queries before network access', async () => {
@@ -186,5 +191,68 @@ describe('bounded local data', () => {
     expect(
       normalizeState({ links: [{ id: '1', title: 'bad', url: 'javascript:bad' }] }).links,
     ).toEqual([]);
+  });
+});
+
+describe('advanced search filters', () => {
+  const defaults = normalizeState({}).settings;
+  it('compiles official operators and rejects malformed or oversized filters', () => {
+    expect(
+      compileQuery('新闻', {
+        ...defaults,
+        site: 'example.com',
+        excludeSite: 'bad.example',
+        language: 'zh,en',
+        after: '2026-01-01',
+        before: '2026-12-31',
+        exactPhrase: 'deep search',
+        excludeTerms: '广告 推广',
+      }),
+    ).toBe(
+      '新闻 site:example.com -site:bad.example lang:zh,en after:2026-01-01 before:2026-12-31 "deep search" -广告 -推广',
+    );
+    expect(() => compileQuery('x', { ...defaults, site: 'example.com OR evil' })).toThrow();
+    expect(() => compileQuery('x', { ...defaults, language: 'zh OR site:x' })).toThrow();
+    expect(() => compileQuery('x', { ...defaults, after: '2026-02-30' })).toThrow();
+    expect(() => compileQuery('x'.repeat(128), { ...defaults, site: 'example.com' })).toThrow(
+      '128',
+    );
+  });
+  it('keeps old settings and validates arbitrary supported counts', () => {
+    expect(normalizeState({}).settings).toMatchObject({
+      site: '',
+      showScores: false,
+      showSummary: false,
+    });
+    expect(normalizeState({ settings: { ...defaults, count: 37 } }).settings.count).toBe(37);
+    expect(normalizeState({ settings: { ...defaults, count: 51 } }).settings.count).toBe(10);
+  });
+});
+
+describe('advanced request options', () => {
+  it('sends explicit localization and original question and bounds returned body', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ results: [{ ...row, content: 'a'.repeat(14000) }] }), {
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const results = await searchWeb('hello site:example.com', 'test-key', 50, undefined, {
+      localization: '203.0.113.4',
+      needContent: true,
+      originalQuestion: 'hello',
+    });
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+      query: 'hello site:example.com',
+      count: 50,
+      need_content: true,
+      localization: '203.0.113.4',
+      ori_question: 'hello',
+    });
+    expect(results[0].content).toHaveLength(12000);
+    await expect(
+      searchWeb('hello', 'test-key', 10, undefined, { localization: '999.1.1.1' }),
+    ).rejects.toThrow('IPv4');
+    expect(fetch).toHaveBeenCalledOnce();
   });
 });

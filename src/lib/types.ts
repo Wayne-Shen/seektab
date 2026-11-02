@@ -5,6 +5,17 @@ export interface Settings {
   historyEnabled: boolean;
   cacheEnabled: boolean;
   openNewTab: boolean;
+  site: string;
+  excludeSite: string;
+  language: string;
+  after: string;
+  before: string;
+  exactPhrase: string;
+  excludeTerms: string;
+  showSummary: boolean;
+  showScores: boolean;
+  localization: string;
+  needContent: boolean;
 }
 export interface QuickLink {
   id: string;
@@ -16,6 +27,10 @@ export interface SearchResult {
   url: string;
   snippet: string;
   siteName: string | null;
+  summary?: string;
+  content?: string;
+  authority?: number | null;
+  score?: number | null;
   date: string | null;
 }
 export interface HistoryItem {
@@ -44,6 +59,17 @@ export const DEFAULT_SETTINGS: Settings = {
   historyEnabled: true,
   cacheEnabled: true,
   openNewTab: true,
+  site: '',
+  excludeSite: '',
+  language: '',
+  after: '',
+  before: '',
+  exactPhrase: '',
+  excludeTerms: '',
+  showSummary: false,
+  showScores: false,
+  localization: '',
+  needContent: false,
 };
 export const DEFAULT_LINKS: QuickLink[] = [
   { id: 'deepseek', title: 'DeepSeek', url: 'https://chat.deepseek.com/' },

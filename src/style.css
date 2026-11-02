@@ -869,3 +869,24 @@ select,
     scroll-behavior: auto !important;
   }
 }
+
+.advanced-settings {
+  margin: 20px 0;
+}
+.advanced-settings summary,
+.result-card summary {
+  cursor: pointer;
+  color: var(--accent-text);
+  min-height: 44px;
+  padding: 10px 0;
+}
+.advanced-settings input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: block;
+  width: 100%;
+  padding: 12px;
+  font-size: 16px;
+  margin-top: 8px;
+}
