@@ -31,8 +31,8 @@ const fixture = {
       site_name: 'Example · 测试来源',
       date: '2026-10-20T08:30:00Z',
       site_icon: 'https://tracking.invalid/pixel',
-      summary: '',
-      content: '',
+      summary: '测试长摘要',
+      content: '测试正文',
       authority: 2,
       rerank_score: 2.2,
     },
@@ -196,7 +196,9 @@ try {
   record('Settings stay usable at 320px; native modal Escape and search shortcut work');
 
   const submit = async (q) => {
-    await page.getByRole('textbox', { name: '搜索网页', exact: true }).fill(q);
+    await page.getByRole('textbox', { name: '搜索网页', exact: true }).click();
+    await page.getByRole('textbox', { name: '搜索网页', exact: true }).press('ControlOrMeta+A');
+    await page.getByRole('textbox', { name: '搜索网页', exact: true }).pressSequentially(q);
     await page.getByRole('button', { name: '提交搜索' }).click();
   };
   await submit('寻找下一次发现');
@@ -379,11 +381,39 @@ try {
   await page.getByRole('checkbox', { name: /缓存搜索结果/ }).uncheck();
   await page.getByRole('button', { name: '保存设置', exact: true }).click();
   await submit('case-private');
+  await expect.poll(() => calls.at(-1)?.data.query).toBe('case-private');
   await expect(page.locator('.result-card')).toHaveCount(3);
   data = await page.evaluate(() => chrome.storage.local.get(null));
   expect(data.history).toEqual([]);
   expect(data.cache).toEqual([]);
   record('Disabling history/cache clears and suppresses local search data');
+
+  await page.getByRole('button', { name: '打开设置' }).click();
+  await page.getByRole('checkbox', { name: /缓存搜索结果/ }).check();
+  await page.getByText('高级搜索筛选', { exact: true }).click();
+  await page.getByLabel('限定站点', { exact: true }).fill('example.com');
+  await page.getByLabel('本地化 IPv4（可选）', { exact: true }).fill('203.0.113.4');
+  await page.getByRole('checkbox', { name: /获取网页正文/ }).check();
+  await page.getByRole('checkbox', { name: /显示长摘要/ }).check();
+  await page.getByRole('checkbox', { name: /显示评分/ }).check();
+  await page.getByRole('button', { name: '保存设置' }).click();
+  await submit('advanced');
+  await expect.poll(() => calls.at(-1)?.data.query).toBe('advanced site:example.com');
+  await expect(page.locator('.result-card')).toHaveCount(3);
+  expect(calls.at(-1).data).toEqual({
+    query: 'advanced site:example.com',
+    count: 10,
+    need_content: true,
+    localization: '203.0.113.4',
+    ori_question: 'advanced',
+  });
+  await expect(page.getByText('排序 2.2/3 · 权威性 2/4')).toBeVisible();
+  await page.getByText('网页正文（最多显示 12,000 字符）').first().click();
+  await expect(page.getByText('测试正文')).toBeVisible();
+  const advancedState = await page.evaluate(() => chrome.storage.local.get(null));
+  expect(JSON.stringify(advancedState.cache)).not.toContain('测试正文');
+  expect(advancedState.cache.some((entry) => entry.query.includes('advanced'))).toBe(false);
+  record('Advanced filters and request options use provider fields without caching page content');
 
   await page.getByRole('button', { name: '打开设置' }).click();
   await page.getByRole('button', { name: '移除已存密钥', exact: true }).click();

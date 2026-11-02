@@ -1,4 +1,4 @@
-import { searchWeb, SearchError, validateQuery } from './api';
+import { searchWeb, SearchError, validateQuery, compileQuery } from './api';
 import { cacheFor, readState, remember, updateState } from './store';
 import type { SearchResult } from './types';
 
@@ -8,7 +8,13 @@ export interface SearchResponse {
   at: number;
   persistenceWarning: boolean;
 }
-async function networkRequest(query: string, key: string, count: number, signal: AbortSignal) {
+async function networkRequest(
+  query: string,
+  key: string,
+  count: number,
+  signal: AbortSignal,
+  options: { localization?: string; needContent?: boolean; originalQuestion?: string } = {},
+) {
   const state = await readState();
   if (state.cooldownUntil > Date.now())
     throw new SearchError('rate', '搜索请求有点频繁，稍等片刻再试。', state.cooldownUntil);
@@ -18,7 +24,7 @@ async function networkRequest(query: string, key: string, count: number, signal:
   if (signal.aborted) throw new SearchError('cancelled', '搜索已取消。');
   await updateState((s) => ({ ...s, lastRequestAt: Date.now() }));
   try {
-    return await searchWeb(query, key, count, signal);
+    return await searchWeb(query, key, count, signal, options);
   } catch (error) {
     if (error instanceof SearchError && error.code === 'rate')
       await updateState((s) => ({ ...s, cooldownUntil: Math.max(s.cooldownUntil, error.retryAt) }));
@@ -34,7 +40,13 @@ export async function runSearch(
   // Only extension pages can call this module; there is no content-script bridge.
   return navigator.locks.request('seektab-network-v1', { signal }, async () => {
     const state = await readState();
-    const cached = !refresh ? cacheFor(state, query, state.settings.count) : undefined;
+    const effectiveQuery = compileQuery(query, state.settings);
+    const advancedRequest =
+      !!state.settings.localization || state.settings.needContent || effectiveQuery !== query;
+    const cached =
+      !refresh && !advancedRequest
+        ? cacheFor(state, effectiveQuery, state.settings.count)
+        : undefined;
     if (cached) {
       let persistenceWarning = false;
       try {
@@ -56,13 +68,32 @@ export async function runSearch(
       }
       return { results: cached.results, fromCache: true, at: cached.at, persistenceWarning };
     }
-    const results = await networkRequest(query, state.apiKey, state.settings.count, signal);
+    const results = await networkRequest(
+      effectiveQuery,
+      state.apiKey,
+      state.settings.count,
+      signal,
+      {
+        localization: state.settings.localization.trim(),
+        needContent: state.settings.needContent,
+        originalQuestion: effectiveQuery !== query ? query : undefined,
+      },
+    );
     if (signal.aborted) throw new SearchError('cancelled', '搜索已取消。');
     const at = Date.now();
     let persistenceWarning = false;
     try {
       await updateState((s) =>
-        remember(s, { query, count: state.settings.count, at, results }, state.privacyRevision),
+        advancedRequest
+          ? {
+              ...remember(
+                s,
+                { query, count: state.settings.count, at, results: [] },
+                state.privacyRevision,
+              ),
+              cache: s.cache,
+            }
+          : remember(s, { query, count: state.settings.count, at, results }, state.privacyRevision),
       );
     } catch {
       persistenceWarning = true;

@@ -20,9 +20,23 @@ export function normalizeState(raw: Partial<LocalState>): LocalState {
       input && ['system', 'light', 'dark'].includes(input.theme)
         ? input.theme
         : DEFAULT_SETTINGS.theme,
-    count: input && [5, 10, 20].includes(input.count) ? input.count : 10,
+    count:
+      input && Number.isInteger(input.count) && input.count >= 1 && input.count <= 50
+        ? input.count
+        : 10,
     historyEnabled: typeof input?.historyEnabled === 'boolean' ? input.historyEnabled : true,
     cacheEnabled: typeof input?.cacheEnabled === 'boolean' ? input.cacheEnabled : true,
+    site: typeof input?.site === 'string' ? input.site.slice(0, 253) : '',
+    excludeSite: typeof input?.excludeSite === 'string' ? input.excludeSite.slice(0, 253) : '',
+    language: typeof input?.language === 'string' ? input.language.slice(0, 60) : '',
+    after: typeof input?.after === 'string' ? input.after.slice(0, 10) : '',
+    before: typeof input?.before === 'string' ? input.before.slice(0, 10) : '',
+    exactPhrase: typeof input?.exactPhrase === 'string' ? input.exactPhrase.slice(0, 128) : '',
+    excludeTerms: typeof input?.excludeTerms === 'string' ? input.excludeTerms.slice(0, 128) : '',
+    showSummary: input?.showSummary === true,
+    showScores: input?.showScores === true,
+    localization: typeof input?.localization === 'string' ? input.localization.slice(0, 15) : '',
+    needContent: input?.needContent === true,
     openNewTab: typeof input?.openNewTab === 'boolean' ? input.openNewTab : true,
   };
   return {
@@ -56,7 +70,9 @@ export function normalizeState(raw: Partial<LocalState>): LocalState {
                 c &&
                 typeof c.query === 'string' &&
                 Number.isFinite(c.at) &&
-                [5, 10, 20].includes(c.count) &&
+                Number.isInteger(c.count) &&
+                c.count >= 1 &&
+                c.count <= 50 &&
                 Array.isArray(c.results),
             )
             .slice(0, MAX_CACHE)

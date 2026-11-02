@@ -1,5 +1,11 @@
 # DeepSeek Search API verification
 
+## 2026-11-02 advanced Search recheck
+
+Official Search reference and Search & Fetch guide confirm `query`, `count` (1–50), `ori_question`, `localization` (IP address), `need_content`, documented query operators, `summary`, `content`, `authority`, and `rerank_score`. SeekTab v1.2.0 exposes these Search capabilities. Manually entered IPv4 localization is opt-in; advanced requests bypass the result cache, and body text is not persisted. Original questions are sent when configured filters alter the query. Fetch and AI responses are separate APIs and are not implemented. See the official references below.
+
+The section below records the original v1.0.0 verification.
+
 Checked against official documentation on **2026-10-22**, before implementing the adapter.
 
 ## Contract used by SeekTab

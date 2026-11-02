@@ -38,7 +38,7 @@ SeekTab replaces Chrome's New Tab page with a search-first Material 3 Expressive
 
 Requires **Chrome 120 or later** and a DeepSeek API key with access to the Search API. The documented local browser checks used Chrome for Testing 147; older supported versions have not all been tested individually.
 
-1. Open [Releases](https://github.com/Wayne-Shen/seektab/releases/latest) and download `SeekTab-1.1.0-unpacked.zip`.
+1. Open [Releases](https://github.com/Wayne-Shen/seektab/releases/latest) and download `SeekTab-1.2.0-unpacked.zip`.
 2. Extract the ZIP and keep the `SeekTab-unpacked` folder in a permanent location.
 3. Open `chrome://extensions` in Chrome and enable **Developer mode**.
 4. Choose **Load unpacked** and select the folder containing `manifest.json`.
@@ -55,6 +55,12 @@ Back up the current extension folder, then replace its contents with the verifie
 
 Release ZIPs are built and tested by GitHub Actions and include SHA-256 checksums. The search-only home keeps history behind its icon; theme and saved shortcuts are under Settings.
 
+## Advanced search
+
+Settings provide persistent site inclusion and exclusion, language codes, date bounds, an exact phrase, excluded words, 1–50 results, optional long summaries, and provider scores. Filters are compiled into the official query syntax, and their combined query must fit 128 Unicode characters. When filters modify the query, the original question is sent as `ori_question`.
+
+An optional IPv4 address can be entered for localized results; it is stored locally and sent to DeepSeek on searches. Optional page content is limited to 12,000 displayed characters per result and is not cached. Searches using filters, localization, or page content bypass the results cache and may incur another provider charge on repetition. Scores are provider estimates, not fact checking. No IP address is detected automatically.
+
 ## How search works
 
 SeekTab uses the [official DeepSeek Search endpoint](https://api-docs.deepseek.com/api/search/), checked against the official documentation on **2026-10-22**:
@@ -67,7 +73,7 @@ Content-Type: application/json
 {"query":"your search","count":10,"need_content":false}
 ```
 
-The UI offers 5, 10, or 20 results. Queries can contain up to 128 Unicode code points. Supported provider operators include `site:github.com`, `"exact phrase"`, `lang:zh`, and `after:2026-01-01`.
+The UI offers 1–50 results. Queries can contain up to 128 Unicode code points. Supported provider operators include `site:github.com`, `"exact phrase"`, `lang:zh`, and `after:2026-01-01`.
 
 The extension renders the response's `results` array. It does not call a chat model or the Fetch API. Missing publication dates are omitted; missing site names fall back to the URL's hostname. See [API verification notes](docs/API-VERIFICATION.md) for implementation details and official references.
 
@@ -123,7 +129,7 @@ Browser tests load the real unpacked extension into an isolated temporary Chromi
 
 Set `CHROMIUM_PATH` to a compatible existing Chromium / Chrome for Testing executable if needed. Use Playwright's Chromium for automated side-loading, as normal Chrome builds may restrict command-line extension loading.
 
-The recorded validation includes **17 core tests and 23 browser checks**. It covers New Tab replacement, key handling, result fields, cache expiry rules, cross-tab coordination, shortcuts, responsive layouts, error states, cancellation, and clearing data during an in-flight request. See the [validation report](docs/TEST-REPORT.md).
+The v1.2.0 validation includes **20 core tests and 24 browser checks**. It covers New Tab replacement, key handling, result fields, cache expiry rules, cross-tab coordination, shortcuts, responsive layouts, error states, cancellation, and clearing data during an in-flight request. See the [validation report](docs/TEST-REPORT.md).
 
 **Real-account authentication and live search quality have not been verified with a user key.** Use Test connection after installation to validate your own account and network.
 
