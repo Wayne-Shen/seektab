@@ -1,6 +1,7 @@
 import { searchWeb, SearchError, validateQuery, compileQuery } from './api';
 import { cacheFor, readState, remember, updateState } from './store';
 import type { SearchResult } from './types';
+import { recordUsage, type Outcome } from './billing';
 
 export interface SearchResponse {
   results: SearchResult[];
@@ -23,12 +24,24 @@ async function networkRequest(
   if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
   if (signal.aborted) throw new SearchError('cancelled', '搜索已取消。');
   await updateState((s) => ({ ...s, lastRequestAt: Date.now() }));
+  let started = false;
+  let outcome: Outcome = 'failed';
   try {
-    return await searchWeb(query, key, count, signal, options);
+    const results = await searchWeb(query, key, count, signal, {
+      ...options,
+      onRequest: () => {
+        started = true;
+      },
+    });
+    outcome = results.length ? 'results' : 'empty';
+    return results;
   } catch (error) {
+    if (error instanceof SearchError && error.code === 'cancelled') outcome = 'cancelled';
     if (error instanceof SearchError && error.code === 'rate')
       await updateState((s) => ({ ...s, cooldownUntil: Math.max(s.cooldownUntil, error.retryAt) }));
     throw error;
+  } finally {
+    if (started) await recordUsage(outcome).catch(() => {});
   }
 }
 export async function runSearch(

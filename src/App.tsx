@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   Check,
   CheckCircle2,
+  BarChart3,
   Clock3,
   ExternalLink,
   Eye,
@@ -34,6 +35,7 @@ import {
 import { runSearch, testConnection, type SearchResponse } from './lib/search';
 import type { LocalState, QuickLink, Settings } from './lib/types';
 import { version } from '../public/manifest.json';
+import { readBillingReport, refreshBillingReport, type BillingReport } from './lib/billing';
 
 function Mark({ small = false }: { small?: boolean }) {
   return (
@@ -114,6 +116,200 @@ function Toggle({
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
       <span className="switch" aria-hidden="true" />
     </label>
+  );
+}
+function BillingModal({ onClose }: { onClose: () => void }) {
+  const [report, setReport] = useState<BillingReport | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    let active = true;
+    readBillingReport()
+      .then((value) => {
+        if (active) setReport(value);
+      })
+      .catch(() => {
+        if (active) setError('无法读取本地报表。');
+      });
+    return () => {
+      active = false;
+      abortRef.current?.abort();
+    };
+  }, []);
+  async function refresh() {
+    const abort = new AbortController();
+    abortRef.current = abort;
+    setBusy(true);
+    setError('');
+    try {
+      const next = await refreshBillingReport(abort.signal);
+      if (!abort.signal.aborted) setReport(next);
+    } catch {
+      if (!abort.signal.aborted) setError('刷新失败，请检查本地存储后重试。');
+    } finally {
+      if (!abort.signal.aborted) setBusy(false);
+    }
+  }
+  const days = report?.days ?? [];
+  const totals = days.reduce(
+    (a, day) => ({
+      results: a.results + day.results,
+      empty: a.empty + day.empty,
+      failed: a.failed + day.failed,
+      cancelled: a.cancelled + day.cancelled,
+    }),
+    { results: 0, empty: 0, failed: 0, cancelled: 0 },
+  );
+  const max = Math.max(
+    1,
+    ...days.slice(0, 30).map((d) => d.results + d.empty + d.failed + d.cancelled),
+  );
+  const fmt = (at: number) =>
+    new Date(at).toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZoneName: 'short',
+    });
+  return (
+    <Modal title="API 用量与余额" onClose={onClose} wide>
+      <div className="billing-report" aria-busy={busy}>
+        <div className="billing-toolbar">
+          <span>{report ? `数据截止：${fmt(report.refreshedAt)}` : '尚未刷新'}</span>
+          <button
+            className="button primary"
+            type="button"
+            disabled={busy}
+            onClick={() => void refresh()}
+          >
+            {busy ? <LoaderCircle size={16} className="spin" /> : <BarChart3 size={16} />}{' '}
+            {busy ? '刷新中…' : '刷新'}
+          </button>
+        </div>
+        <p className="field-help">
+          仅点击刷新时查询余额并更新报表。统计只覆盖此扩展在本机完成的 Search
+          请求，包含连接测试及使用过的所有 API Key；不包含缓存命中、进行中的请求和其他应用的请求。
+        </p>
+        {error && (
+          <p role="alert" className="feedback error">
+            {error}
+          </p>
+        )}
+        {report && (
+          <>
+            <section className="billing-section">
+              <h3>账户余额</h3>
+              {report.balance ? (
+                <>
+                  {report.balance.length ? (
+                    report.balance.map((row) => (
+                      <div className="balance-row" key={row.currency}>
+                        <strong>
+                          {row.currency} {row.total}
+                        </strong>
+                        <span>
+                          赠送 {row.granted} · 充值 {row.toppedUp}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <p>没有可显示的余额。</p>
+                  )}
+                  <p className="tiny muted">
+                    余额查询时间：{report.balanceAt ? fmt(report.balanceAt) : '未知'}
+                    ；关联刷新时使用的 API Key。
+                  </p>
+                </>
+              ) : (
+                <p role="status">{report.balanceError || '余额不可用。'}</p>
+              )}
+            </section>
+            <section className="billing-section">
+              <h3>本机请求报表</h3>
+              <p className="tiny muted">
+                {report.trackingSince
+                  ? `记录起点：${fmt(report.trackingSince)}`
+                  : '尚无记录；安装此功能之后的请求才会被统计。'}{' '}
+                按设备本地日期分组，最多保留最近 366
+                个有请求的日期。扩展关闭或本地存储不可用可能导致记录不完整；统计并非 DeepSeek
+                官方账单。
+              </p>
+              <div className="billing-totals">
+                <span>
+                  已完成{' '}
+                  <strong>
+                    {totals.results + totals.empty + totals.failed + totals.cancelled}
+                  </strong>
+                </span>
+                <span>
+                  有结果 <strong>{totals.results}</strong>
+                </span>
+                <span>
+                  空结果 <strong>{totals.empty}</strong>
+                </span>
+                <span>
+                  失败 <strong>{totals.failed}</strong>
+                </span>
+                <span>
+                  取消 <strong>{totals.cancelled}</strong>
+                </span>
+              </div>
+              <p className="tiny muted">
+                有结果不等于确认已计费；取消、网络中断或响应异常时，以服务商账单为准。
+              </p>
+              {days.length > 0 && (
+                <div className="billing-scroll">
+                  <table>
+                    <caption>最近 30 个有请求的日期</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">日期</th>
+                        <th scope="col">请求量</th>
+                        <th scope="col">有结果</th>
+                        <th scope="col">空结果</th>
+                        <th scope="col">失败</th>
+                        <th scope="col">取消</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {days.slice(0, 30).map((d) => {
+                        const count = d.results + d.empty + d.failed + d.cancelled;
+                        return (
+                          <tr key={d.day}>
+                            <th scope="row">{d.day}</th>
+                            <td>
+                              <span
+                                className="usage-bar"
+                                aria-hidden="true"
+                                style={{ width: `${Math.round((count / max) * 72)}px` }}
+                              />
+                              {count}
+                            </td>
+                            <td>{d.results}</td>
+                            <td>{d.empty}</td>
+                            <td>{d.failed}</td>
+                            <td>{d.cancelled}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          </>
+        )}
+        <p className="field-help">
+          <a href="https://platform.deepseek.com/usage" target="_blank" rel="noopener noreferrer">
+            查看 DeepSeek 平台完整用量与账单 <ArrowUpRight size={14} />
+          </a>
+        </p>
+      </div>
+    </Modal>
   );
 }
 function SettingsModal({
@@ -641,7 +837,7 @@ export default function App() {
   const [response, setResponse] = useState<SearchResponse | null>(null);
   const [error, setError] = useState<SearchError | null>(null);
   const [busy, setBusy] = useState(false);
-  const [modal, setModal] = useState<'settings' | 'history' | null>(
+  const [modal, setModal] = useState<'settings' | 'history' | 'billing' | null>(
     location.hash === '#settings' ? 'settings' : null,
   );
   const [toast, setToast] = useState('');
@@ -801,6 +997,14 @@ export default function App() {
           SeekTab
         </button>
         <nav className="top-actions" aria-label="页面工具">
+          <button
+            className="icon-button"
+            aria-label="API 用量与余额"
+            title="API 用量与余额"
+            onClick={() => setModal('billing')}
+          >
+            <BarChart3 size={19} />
+          </button>
           <button
             className="icon-button"
             aria-label="搜索历史"
@@ -1067,6 +1271,7 @@ export default function App() {
           {toast}
         </div>
       )}
+      {modal === 'billing' && <BillingModal onClose={closeModal} />}
       {modal === 'settings' && (
         <SettingsModal state={state} onClose={closeModal} onSaved={setToast} cooldown={cooldown} />
       )}
