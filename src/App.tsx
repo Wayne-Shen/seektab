@@ -1394,8 +1394,24 @@ export default function App() {
   }
   function openUrl(url: string) {
     if (!safeUrl(url)) return;
-    if (state?.settings.openNewTab) window.open(url, '_blank', 'noopener,noreferrer');
+    const newTab = !!state?.settings.openNewTab;
+    // Browser-initiated navigation (like typing in the address bar) carries no
+    // cross-site initiator, which sites such as LuCI require.
+    if (typeof chrome !== 'undefined' && chrome.tabs?.update) {
+      const done = newTab ? chrome.tabs.create({ url }) : chrome.tabs.update({ url });
+      Promise.resolve(done).catch(() => fallbackOpen(url, newTab));
+      return;
+    }
+    fallbackOpen(url, newTab);
+  }
+  function fallbackOpen(url: string, newTab: boolean) {
+    if (newTab) window.open(url, '_blank', 'noopener,noreferrer');
     else location.assign(url);
+  }
+  function onLinkClick(e: React.MouseEvent<HTMLAnchorElement>, url: string) {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    openUrl(url);
   }
   const groups: PaletteGroup[] = [];
   if (paletteOpen) {
@@ -1806,7 +1822,11 @@ export default function App() {
                             </div>
                           </div>
                           <h2>
-                            <a href={safeUrl(r.url) || undefined} {...linkProps}>
+                            <a
+                              href={safeUrl(r.url) || undefined}
+                              onClick={(e) => onLinkClick(e, r.url)}
+                              {...linkProps}
+                            >
                               {r.title}
                               <ArrowUpRight size={17} />
                             </a>
@@ -1927,7 +1947,12 @@ export default function App() {
         </div>
         <nav className="rail-links" aria-label={t('快捷链接')}>
           {state.links.map((link, at) => (
-            <a key={link.id} href={safeUrl(link.url) || undefined} {...linkProps}>
+            <a
+              key={link.id}
+              href={safeUrl(link.url) || undefined}
+              onClick={(e) => onLinkClick(e, link.url)}
+              {...linkProps}
+            >
               <LinkIcon url={link.url} title={link.title} />
               <span className="link-title">{link.title}</span>
               <kbd>{at < 9 ? `⌥${at + 1}` : ''}</kbd>
